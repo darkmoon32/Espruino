@@ -64,32 +64,37 @@ Pin jshGetPinFromString(const char *s) {
 #ifdef BTN4_PININDEX
     if (s[3]=='4' && !s[4]) return BTN4_PININDEX;
 #endif
+#ifdef BTN5_PININDEX
+    if (s[3]=='5' && !s[4]) return BTN5_PININDEX;
+#endif
   }
-  if (s[0]=='L' && s[1]=='E' && s[2]=='D') {
-#ifdef LED1_PININDEX
-    if (!s[3]) return LED1_PININDEX;
-    if (s[3]=='1' && !s[4]) return LED1_PININDEX;
+  if (s[0]=='R' && s[1]=='E' && s[2]=='D') {
+#ifdef RED1_PININDEX
+    if (!s[3]) return RED1_PININDEX;
+    if (s[3]=='1' && !s[4]) return RED1_PININDEX;
 #endif
-#ifdef LED2_PININDEX
-    if (s[3]=='2' && !s[4]) return LED2_PININDEX;
+#ifdef RED2_PININDEX
+    if (s[3]=='2' && !s[4]) return RED2_PININDEX;
 #endif
-#ifdef LED3_PININDEX
-    if (s[3]=='3' && !s[4]) return LED3_PININDEX;
+#ifdef RED3_PININDEX
+    if (s[3]=='3' && !s[4]) return RED3_PININDEX;
 #endif
-#ifdef LED4_PININDEX
-    if (s[3]=='4' && !s[4]) return LED4_PININDEX;
+#ifdef RED4_PININDEX
+    if (s[3]=='4' && !s[4]) return RED4_PININDEX;
 #endif
-#ifdef LED5_PININDEX
-    if (s[3]=='5' && !s[4]) return LED5_PININDEX;
+   }
+   if (s[0]=='G' && s[1]=='R' && s[2]=='E' && s[3]=='E' && s[4]=='N') {
+#ifdef GREEN1_PININDEX
+    if (s[5]=='1' && !s[6]) return GREEN1_PININDEX;
 #endif
-#ifdef LED6_PININDEX
-    if (s[3]=='6' && !s[4]) return LED6_PININDEX;
+#ifdef GREEN2_PININDEX
+    if (s[5]=='2' && !s[6]) return GREEN2_PININDEX;
 #endif
-#ifdef LED7_PININDEX
-    if (s[3]=='7' && !s[4]) return LED7_PININDEX;
+#ifdef GREEN3_PININDEX
+    if (s[5]=='3' && !s[6]) return GREEN3_PININDEX;
 #endif
-#ifdef LED8_PININDEX
-    if (s[3]=='8' && !s[4]) return LED8_PININDEX;
+#ifdef GREEN4_PININDEX
+    if (s[5]=='4' && !s[6]) return GREEN4_PININDEX;
 #endif
   }
 

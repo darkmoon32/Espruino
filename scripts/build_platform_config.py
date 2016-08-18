@@ -79,7 +79,7 @@ if not LINUX:
   if 'VARIABLES' in os.environ:
     variables=int(os.environ['VARIABLES'])
 
-  var_size = 12 if variables<1023 else 16
+  var_size = 20 if variables<1023 else 20
   # the 'packed bits mean anything under 1023 vars gets into 12 byte JsVars
   var_cache_size = var_size*variables
   flash_needed = var_cache_size + 4 # for magic number
@@ -136,11 +136,11 @@ def toPinDef(pin):
 def codeOutDevice(device):
   if device in board.devices:
     codeOut("#define "+device+"_PININDEX "+toPinDef(board.devices[device]["pin"]))
-    if device=="BTN1":
+    if device[0:3]=="BTN":
       codeOut("#define "+device+"_ONSTATE "+("0" if "inverted" in board.devices[device] else "1"))
       if "pinstate" in board.devices[device]:
         codeOut("#define "+device+"_PINSTATE JSHPINSTATE_GPIO_"+board.devices[device]["pinstate"]);
-    if device[0:3]=="LED":
+    if device[0:3]=="RED" or device[0:5]=="GREEN":
       codeOut("#define "+device+"_ONSTATE "+("0" if "inverted" in board.devices[device] else "1"))
 
 def codeOutDevicePin(device, pin, definition_name):
@@ -328,8 +328,8 @@ codeOut("#define UTILTIMERTASK_TASKS ("+str(bufferSizeTimer)+") // Must be power
 codeOut("");
 
 simpleDevices = [
- "LED1","LED2","LED3","LED4","LED5","LED6","LED7","LED8",
- "BTN1","BTN2","BTN3","BTN4"];
+ "RED1","RED2","RED3","RED4","GREEN1","GREEN2","GREEN3","GREEN4",
+ "BTN1","BTN2","BTN3","BTN4","BTN5"];
 usedPinChecks = ["false"];
 ledChecks = ["false"];
 btnChecks = ["false"];
@@ -338,6 +338,7 @@ for device in simpleDevices:
     codeOutDevice(device)
     check = "(PIN)==" + toPinDef(board.devices[device]["pin"])
     if device[:3]=="LED": ledChecks.append(check)
+    if device[:5]=="GREEN": ledChecks.append(check)
     if device[:3]=="BTN": btnChecks.append(check)
 #   usedPinChecks.append(check)
 # Actually we don't care about marking used pins for LEDs/Buttons
