@@ -97,6 +97,56 @@ Pin jshGetPinFromString(const char *s) {
     if (s[5]=='4' && !s[6]) return GREEN4_PININDEX;
 #endif
   }
+  if (s[0]=='P' && s[1]=='W' && s[2]=='M') {
+#ifdef PWM1_PININDEX
+    if (s[3]=='1' && !s[4]) return PWM1_PININDEX;
+#endif
+#ifdef PWM2_PININDEX
+    if (s[3]=='2' && !s[4]) return PWM2_PININDEX;
+#endif
+#ifdef PWM3_PININDEX
+    if (s[3]=='3' && !s[4]) return PWM3_PININDEX;
+#endif
+#ifdef PWM4_PININDEX
+    if (s[3]=='4' && !s[4]) return PWM4_PININDEX;
+#endif
+#ifdef PWM5_PININDEX
+    if (s[3]=='5' && !s[4]) return PWM5_PININDEX;
+#endif
+#ifdef PWM6_PININDEX
+    if (s[3]=='6' && !s[4]) return PWM6_PININDEX;
+#endif
+#ifdef PWM7_PININDEX
+    if (s[3]=='7' && !s[4]) return PWM7_PININDEX;
+#endif
+#ifdef PWM8_PININDEX
+    if (s[3]=='8' && !s[4]) return PWM8_PININDEX;
+#endif
+#ifdef PWM9_PININDEX
+    if (s[3]=='9' && !s[4]) return PWM9_PININDEX;
+#endif
+#ifdef PWM10_PININDEX
+    if (s[3]=='1' && s[4]=='0') return PWM10_PININDEX;
+#endif
+#ifdef PWM11_PININDEX
+    if (s[3]=='1' && s[4]=='1') return PWM11_PININDEX;
+#endif
+#ifdef PWM12_PININDEX
+    if (s[3]=='1' && s[4]=='2') return PWM12_PININDEX;
+#endif
+#ifdef PWM13_PININDEX
+    if (s[3]=='1' && s[4]=='3') return PWM13_PININDEX;
+#endif
+#ifdef PWM14_PININDEX
+    if (s[3]=='1' && s[4]=='4') return PWM14_PININDEX;
+#endif
+#ifdef PWM15_PININDEX
+    if (s[3]=='1' && s[4]=='5') return PWM15_PININDEX;
+#endif
+#ifdef PWM16_PININDEX
+    if (s[3]=='1' && s[4]=='6') return PWM16_PININDEX;
+#endif
+  }
 
   if ((s[0]>='A' && s[0]<='H') && s[1]) {
     int port = JSH_PORTA+s[0]-'A';

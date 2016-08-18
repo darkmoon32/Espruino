@@ -79,7 +79,7 @@ if not LINUX:
   if 'VARIABLES' in os.environ:
     variables=int(os.environ['VARIABLES'])
 
-  var_size = 20 if variables<1023 else 20
+  var_size = 30 if variables<1023 else 30
   # the 'packed bits mean anything under 1023 vars gets into 12 byte JsVars
   var_cache_size = var_size*variables
   flash_needed = var_cache_size + 4 # for magic number
@@ -141,7 +141,9 @@ def codeOutDevice(device):
       if "pinstate" in board.devices[device]:
         codeOut("#define "+device+"_PINSTATE JSHPINSTATE_GPIO_"+board.devices[device]["pinstate"]);
     if device[0:3]=="RED" or device[0:5]=="GREEN":
-      codeOut("#define "+device+"_ONSTATE "+("0" if "inverted" in board.devices[device] else "1"))
+      codeOut("#define "+device+"_ONSTATE "+("0" if "inverted" in board.devices[device] else "1"));
+    if device[0:3]=="PWM":
+      codeOut("#define "+device+"_ONSTATE "+("0" if "inverted" in board.devices[device] else "1"));
 
 def codeOutDevicePin(device, pin, definition_name):
   if device in board.devices:
@@ -329,17 +331,20 @@ codeOut("");
 
 simpleDevices = [
  "RED1","RED2","RED3","RED4","GREEN1","GREEN2","GREEN3","GREEN4",
- "BTN1","BTN2","BTN3","BTN4","BTN5"];
+ "BTN1","BTN2","BTN3","BTN4","BTN5",
+ "PWM1", "PWM2", "PWM3", "PWM4", "PWM5", "PWM6", "PWM7", "PWM8", "PWM9", "PWM10", "PWM11", "PWM12", "PWM13", "PWM14", "PWM15", "PWM16"];
 usedPinChecks = ["false"];
 ledChecks = ["false"];
 btnChecks = ["false"];
+pwmChecks = ["false"];
 for device in simpleDevices:
   if device in board.devices:
     codeOutDevice(device)
     check = "(PIN)==" + toPinDef(board.devices[device]["pin"])
-    if device[:3]=="LED": ledChecks.append(check)
+    if device[:3]=="RED": ledChecks.append(check)
     if device[:5]=="GREEN": ledChecks.append(check)
     if device[:3]=="BTN": btnChecks.append(check)
+    if device[:3]=="PWM": pwmChecks.append(check)
 #   usedPinChecks.append(check)
 # Actually we don't care about marking used pins for LEDs/Buttons
 
@@ -409,6 +414,7 @@ codeOut("// definition to avoid compilation when Pin/platform config is not defi
 codeOut("#define IS_PIN_USED_INTERNALLY(PIN) (("+")||(".join(usedPinChecks)+"))")
 codeOut("#define IS_PIN_A_LED(PIN) (("+")||(".join(ledChecks)+"))")
 codeOut("#define IS_PIN_A_BUTTON(PIN) (("+")||(".join(btnChecks)+"))")
+codeOut("#define IS_PIN_A_PWM(PIN) (("+")||(".join(pwmChecks)+"))")
 
 
 codeOut("""
