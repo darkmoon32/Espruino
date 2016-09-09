@@ -1091,9 +1091,9 @@ void jshInit() {
 #endif
 #endif // ESPRUINOBOARD
 
-#ifdef LED1_PININDEX
+#ifdef RED5_PININDEX
   // turn led on (status)
-  jshPinOutput(LED1_PININDEX, 1);
+  jshPinOutput(RED5_PININDEX, 1);
 #endif
 #ifdef USE_RTC
   // allow access to backup domain
@@ -1132,9 +1132,9 @@ void jshInit() {
 #endif
 
   jshResetPeripherals();
-#ifdef LED1_PININDEX
+#ifdef RED5_PININDEX
   // turn led back on (status) as it would have just been turned off
-  jshPinOutput(LED1_PININDEX, 1);
+  jshPinOutput(RED5_PININDEX, 1);
 #endif
 
 #ifdef SWD_ONLY_NO_JTAG
@@ -1264,9 +1264,9 @@ void jshInit() {
     jshSPIBufTail[i] = 0;
   }
 
-#ifdef LED1_PININDEX
+#ifdef RED1_PININDEX
   // now hardware is initialised, turn led off
-  jshPinOutput(LED1_PININDEX, 0);
+  jshPinOutput(RED1_PININDEX, 0);
 #endif
 }
 

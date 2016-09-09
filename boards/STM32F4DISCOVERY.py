@@ -50,6 +50,7 @@ devices = {
   'RED2' : { 'pin' : 'D8' },
   'RED3' : { 'pin' : 'C13' },
   'RED4' : { 'pin' : 'A7' },
+  'RED5' : { 'pin' : 'C15' },
   'GREEN1' : { 'pin' : 'B13'},
   'GREEN2' : { 'pin' : 'B12'},
   'GREEN3' : { 'pin' : 'D10'},

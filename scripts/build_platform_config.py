@@ -330,7 +330,7 @@ codeOut("#define UTILTIMERTASK_TASKS ("+str(bufferSizeTimer)+") // Must be power
 codeOut("");
 
 simpleDevices = [
- "RED1","RED2","RED3","RED4","GREEN1","GREEN2","GREEN3","GREEN4",
+ "RED1","RED2","RED3","RED4","RED5","GREEN1","GREEN2","GREEN3","GREEN4",
  "BTN1","BTN2","BTN3","BTN4","BTN5",
  "PWM1", "PWM2", "PWM3", "PWM4", "PWM5", "PWM6", "PWM7", "PWM8", "PWM9", "PWM10", "PWM11", "PWM12", "PWM13", "PWM14", "PWM15", "PWM16"];
 usedPinChecks = ["false"];
