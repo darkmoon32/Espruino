@@ -96,6 +96,8 @@ if not LINUX:
     flash_page_size = 4*1024
   if board.chip["family"]=="EFM32GG":
     flash_page_size = 4*1024
+  if board.chip["family"]=="STM32L4":
+    flash_page_size = 128*1024
   flash_saved_code_pages = round((flash_needed+flash_page_size-1)/flash_page_size + 0.5) #Needs to be a full page, so we're rounding up
   # F4 has different page sizes in different places
   total_flash = board.chip["flash"]*1024
@@ -188,6 +190,11 @@ elif board.chip["family"]=="STM32F4":
   codeOut('#include "stm32f4xx.h"')
   codeOut('#include "stm32f4xx_conf.h"')
   codeOut("#define STM32API2 // hint to jshardware that the API is a lot different")
+elif board.chip["family"]=="STM32L4":
+  board.chip["class"]="STM32_LL"
+  codeOut('#include "stm32l4xx_ll_bus.h"')
+  codeOut('#include "stm32l4xx_ll_rcc.h"')
+  codeOut('#include "stm32l4xx_ll_adc.h"')
 elif board.chip["family"]=="NRF51":
   board.chip["class"]="NRF51"
   codeOut('#include "nrf.h"')
@@ -204,6 +211,8 @@ elif board.chip["family"]=="AVR":
   board.chip["class"]="AVR"
 elif board.chip["family"]=="ESP8266":
   board.chip["class"]="ESP8266"
+elif board.chip["family"]=="ESP32":
+  board.chip["class"]="ESP32"
 else:
   die('Unknown chip family '+board.chip["family"])
 
@@ -235,7 +244,7 @@ codeOut("""
 
 """);
 
-if board.chip["class"]=="STM32":
+if (board.chip["class"]=="STM32") | (board.chip["class"]=="STM32_LL"):
   if (board.chip["part"][:9]=="STM32F401") | (board.chip["part"][:9]=="STM32F411"):
 # FIXME - need to remove TIM5 from jspininfo
    codeOut("""
@@ -244,6 +253,14 @@ if board.chip["class"]=="STM32":
 #define UTIL_TIMER_IRQn TIM5_IRQn
 #define UTIL_TIMER_IRQHandler TIM5_IRQHandler
 #define UTIL_TIMER_APB1 RCC_APB1Periph_TIM5
+""")
+  elif (board.chip["part"][:9]=="STM32L476"):
+   codeOut("""
+// Used by various pins, but always with other options
+#define UTIL_TIMER TIM5
+#define UTIL_TIMER_IRQn TIM5_IRQn
+#define UTIL_TIMER_IRQHandler TIM5_IRQHandler
+#define UTIL_TIMER_APB1 LL_APB1_GRP1_PERIPH_TIM5
 """)
   elif "subfamily" in board.chip and board.chip["subfamily"]=="MD":
 
@@ -292,7 +309,10 @@ else:
   codeOut("")
   codeOut("#define FLASH_SAVED_CODE_START            "+str(flash_saved_code_start))
   codeOut("#define FLASH_SAVED_CODE_LENGTH           "+str(int(flash_page_size*flash_saved_code_pages)))
-  codeOut("#define FLASH_MAGIC_LOCATION              (FLASH_SAVED_CODE_START + FLASH_SAVED_CODE_LENGTH - 4)")
+  if board.chip["family"]=="STM32L4":
+    codeOut("#define FLASH_MAGIC_LOCATION              (FLASH_SAVED_CODE_START + FLASH_SAVED_CODE_LENGTH - 8)")
+  else:
+    codeOut("#define FLASH_MAGIC_LOCATION              (FLASH_SAVED_CODE_START + FLASH_SAVED_CODE_LENGTH - 4)")
   codeOut("#define FLASH_MAGIC 0xDEADBEEF")
 codeOut("");
 codeOut("#define USART_COUNT                          "+str(board.chip["usart"]))
@@ -329,15 +349,11 @@ codeOut("#define UTILTIMERTASK_TASKS ("+str(bufferSizeTimer)+") // Must be power
 
 codeOut("");
 
-simpleDevices = [
- "RED1","RED2","RED3","RED4","RED5","GREEN1","GREEN2","GREEN3","GREEN4",
- "BTN1","BTN2","BTN3","BTN4","BTN5",
- "PWM1", "PWM2", "PWM3", "PWM4", "PWM5", "PWM6", "PWM7", "PWM8", "PWM9", "PWM10", "PWM11", "PWM12", "PWM13", "PWM14", "PWM15", "PWM16"];
 usedPinChecks = ["false"];
 ledChecks = ["false"];
 btnChecks = ["false"];
 pwmChecks = ["false"];
-for device in simpleDevices:
+for device in pinutils.SIMPLE_DEVICES:
   if device in board.devices:
     codeOutDevice(device)
     check = "(PIN)==" + toPinDef(board.devices[device]["pin"])
@@ -389,6 +405,10 @@ if "SD" in board.devices:
 if "IR" in board.devices:
   codeOutDevicePin("IR", "pin_anode", "IR_ANODE_PIN")
   codeOutDevicePin("IR", "pin_cathode", "IR_CATHODE_PIN")
+
+if "CAPSENSE" in board.devices:
+  codeOutDevicePin("CAPSENSE", "pin_rx", "CAPSENSE_RX_PIN")
+  codeOutDevicePin("CAPSENSE", "pin_tx", "CAPSENSE_TX_PIN")
 
 for device in ["USB","SD","LCD","JTAG","ESP8266","IR"]:
   if device in board.devices:

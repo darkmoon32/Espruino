@@ -29,9 +29,9 @@
 #define HTTP_NAME_OPTIONS_VAR "opt"
 #define HTTP_NAME_SERVER_VAR "svr"
 #define HTTP_NAME_CHUNKED "chunked"
-#define HTTP_NAME_CLOSENOW "closeNow"  // boolean: gotta close
+#define HTTP_NAME_CLOSENOW "clsNow"  // boolean: gotta close
 #define HTTP_NAME_CONNECTED "conn"     // boolean: we are connected
-#define HTTP_NAME_CLOSE "close"        // close after sending
+#define HTTP_NAME_CLOSE "cls"        // close after sending
 #define HTTP_NAME_ON_CONNECT JS_EVENT_PREFIX"connect"
 #define HTTP_NAME_ON_CLOSE JS_EVENT_PREFIX"close"
 #define HTTP_NAME_ON_END JS_EVENT_PREFIX"end"
@@ -194,7 +194,7 @@ void _socketConnectionKill(JsNetwork *net, JsVar *connection) {
   int sckt = (int)jsvGetIntegerAndUnLock(jsvObjectGetChild(connection,HTTP_NAME_SOCKET,0))-1; // so -1 if undefined
   if (sckt>=0) {
     netCloseSocket(net, sckt);
-    jsvObjectSetChild(connection,HTTP_NAME_SOCKET,0);
+    jsvObjectRemoveChild(connection,HTTP_NAME_SOCKET);
   }
 }
 
@@ -413,6 +413,8 @@ bool socketServerConnectionsIdle(JsNetwork *net) {
       bool hadError = fireErrorEvent(error, connection, socket);
 
       // fire the close listeners
+      jsiQueueObjectCallbacks(connection, HTTP_NAME_ON_END, NULL, 0);
+      jsiQueueObjectCallbacks(socket, HTTP_NAME_ON_END, NULL, 0);
       JsVar *params[1] = { jsvNewFromBool(hadError) };
       jsiQueueObjectCallbacks(connection, HTTP_NAME_ON_CLOSE, params, 1);
       jsiQueueObjectCallbacks(socket, HTTP_NAME_ON_CLOSE, params, 1);
@@ -439,7 +441,7 @@ void socketClientPushReceiveData(JsVar *connection, JsVar *socket, JsVar **recei
     if (jsvIsEmptyString(*receiveData) ||
         jswrap_stream_pushData(socket, *receiveData, false)) {
       // clear - because we have issued a callback
-      jsvObjectSetChild(connection,HTTP_NAME_RECEIVE_DATA,0);
+      jsvObjectRemoveChild(connection,HTTP_NAME_RECEIVE_DATA);
       jsvUnLock(*receiveData);
       *receiveData = 0;
     }
@@ -576,6 +578,7 @@ bool socketClientConnectionsIdle(JsNetwork *net) {
         bool hadError = fireErrorEvent(error, connection, NULL);
 
         // close callback must happen after error callback
+        jsiQueueObjectCallbacks(socket, HTTP_NAME_ON_END, NULL, 0);
         JsVar *params[1] = { jsvNewFromBool(hadError) };
         jsiQueueObjectCallbacks(socket, HTTP_NAME_ON_CLOSE, params, 1);
         jsvUnLock(params[0]);
@@ -678,7 +681,7 @@ void serverListen(JsNetwork *net, JsVar *server, int port) {
 
   int sckt = netCreateSocket(net, 0/*server*/, (unsigned short)port, NCF_NORMAL, 0 /*options*/);
   if (sckt<0) {
-    jsError("Unable to create socket\n");
+    jsExceptionHere(JSET_INTERNALERROR, "Unable to create socket\n");
     jsvObjectSetChildAndUnLock(server, HTTP_NAME_CLOSENOW, jsvNewFromBool(true));
   } else {
     jsvObjectSetChildAndUnLock(server, HTTP_NAME_SOCKET, jsvNewFromInteger(sckt+1));
@@ -823,7 +826,7 @@ void clientRequestConnect(JsNetwork *net, JsVar *httpClientReqVar) {
   networkGetHostByName(net, hostName, &host_addr);
 
   if(!host_addr) {
-    jsError("Unable to locate host\n");
+    jsExceptionHere(JSET_INTERNALERROR, "Unable to locate host\n");
     // As this is already in the list of connections, an error will be thrown on idle anyway
     jsvObjectSetChildAndUnLock(httpClientReqVar, HTTP_NAME_CLOSENOW, jsvNewFromBool(true));
     jsvUnLock(options);
@@ -843,7 +846,7 @@ void clientRequestConnect(JsNetwork *net, JsVar *httpClientReqVar) {
 
   int sckt =  netCreateSocket(net, host_addr, port, flags, options);
   if (sckt<0) {
-    jsError("Unable to create socket\n");
+    jsExceptionHere(JSET_INTERNALERROR, "Unable to create socket\n");
     // As this is already in the list of connections, an error will be thrown on idle anyway
     jsvObjectSetChildAndUnLock(httpClientReqVar, HTTP_NAME_CLOSENOW, jsvNewFromBool(true));
   } else {

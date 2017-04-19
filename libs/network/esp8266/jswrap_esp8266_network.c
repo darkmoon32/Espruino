@@ -18,7 +18,11 @@
  */
 
 // Set WIFI_DBG to 0 to disable debug printf's, to 1 for important printf's, to 2 for verbose
+#ifdef RELEASE
+#define WIFI_DBG 0
+#else
 #define WIFI_DBG 1
+#endif
 // Normal debug
 #if WIFI_DBG > 0
 #define DBG(format, ...) os_printf(format, ## __VA_ARGS__)
@@ -52,6 +56,7 @@ typedef long long int64_t;
 #include "jswrap_esp8266_network.h"
 #include "jswrap_esp8266.h"
 #include "jswrap_modules.h"
+#include "jswrap_interactive.h"
 #include "jsinteractive.h"
 #include "network.h"
 #include "network_esp8266.h"
@@ -100,6 +105,9 @@ static bool g_skipDisconnect;
 
 // Global data structure for ping request
 static struct ping_option pingOpt;
+
+// Global data structure for setIP  and setAPIP 
+static struct ip_info info;
 
 // Configuration save to flash
 typedef struct {
@@ -1136,6 +1144,7 @@ void jswrap_ESP8266_wifi_save(JsVar *what) {
   uint32_t flashBlock[256];
   Esp8266_config *conf=(Esp8266_config *)flashBlock;
   os_memset(flashBlock, 0, sizeof(flashBlock));
+  uint32_t map = system_get_flash_size_map();
 
   conf->length = 1024;
   conf->version = 24;
@@ -1173,9 +1182,14 @@ void jswrap_ESP8266_wifi_save(JsVar *what) {
   }
 
   conf->crc = crc32((uint8_t*)flashBlock, sizeof(flashBlock));
-  DBG("Wifi.save: len=%d vers=%d crc=0x%08lx\n", conf->length, conf->version, conf->crc);
-  jshFlashErasePage(0x7B000);
-  jshFlashWrite(conf, 0x7B000, sizeof(flashBlock));
+  DBG("Wifi.save: len=%d vers=%d crc=0x%08lx\n", conf->length, conf->version, (long unsigned int) conf->crc);
+  if (map == 6 ) {
+    jshFlashErasePage( 0x3FB000);
+    jshFlashWrite(conf,0x3FB000, sizeof(flashBlock));    
+  } else {  
+    jshFlashErasePage(0x7B000);
+    jshFlashWrite(conf, 0x7B000, sizeof(flashBlock));
+  }
   DBGV("< Wifi.save: write completed\n");
 }
 
@@ -1194,8 +1208,13 @@ void jswrap_ESP8266_wifi_restore(void) {
   uint32_t flashBlock[256];
   Esp8266_config *conf=(Esp8266_config *)flashBlock;
   os_memset(flashBlock, 0, sizeof(flashBlock));
-  jshFlashRead(flashBlock, 0x7B000, sizeof(flashBlock));
-  DBG("Wifi.restore: len=%d vers=%d crc=0x%08lx\n", conf->length, conf->version, conf->crc);
+  uint32_t map = system_get_flash_size_map();
+  if (map == 6 ) {
+    jshFlashRead(flashBlock, 0x3FB000, sizeof(flashBlock));
+  } else {
+    jshFlashRead(flashBlock, 0x7B000, sizeof(flashBlock));
+  }  
+  DBG("Wifi.restore: len=%d vers=%d crc=0x%08lx\n", conf->length, conf->version, (long unsigned int) conf->crc);
   uint32_t crcRd = conf->crc;
   conf->crc = 0;
   uint32_t crcCalc = crc32((uint8_t*)flashBlock, sizeof(flashBlock));
@@ -1207,7 +1226,7 @@ void jswrap_ESP8266_wifi_restore(void) {
       conf->phyMode > PHY_MODE_11N || conf->sleepType > MODEM_SLEEP_T ||
       conf->mode > STATIONAP_MODE) {
     DBG("Wifi.restore cannot restore: version read=%d exp=%d, crc read=0x%08lx cacl=0x%08lx\n",
-        conf->version, 24, crcRd, crcCalc);
+        conf->version, 24, (long unsigned int) crcRd, (long unsigned int) crcCalc);
     wifi_set_phy_mode(PHY_MODE_11N);
     wifi_set_opmode_current(SOFTAP_MODE);
     return;
@@ -1535,10 +1554,14 @@ static os_timer_t sntpTimer;
 static void sntpSync(void *arg) {
   uint32_t sysTime = (uint32_t)((jshGetSystemTime() + 500000) / 1000000);
   uint32_t ntpTime = sntp_get_current_timestamp();
-  if (ntpTime-sysTime != 0) {
-    DBG("NTP time: %ld delta=%ld %s\n", ntpTime, ntpTime-sysTime, sntp_get_real_time(ntpTime));
+  if (!ntpTime) {
+    DBG("NTP time: null\n");
+  } else {
+    if (ntpTime-sysTime != 0) {
+      DBG("NTP time: %ld delta=%ld %s\n", (long unsigned int) ntpTime, (long unsigned int)ntpTime-sysTime, sntp_get_real_time(ntpTime));
+    }
+    jswrap_interactive_setTime((JsVarFloat)ntpTime);
   }
-  jshSetSystemTime((int64_t)ntpTime * 1000000);
   os_timer_disarm(&sntpTimer);
   os_timer_arm(&sntpTimer, 30*1000, 0);
 }
@@ -1657,7 +1680,7 @@ Perform a network ping request. The parameter can be either a String or a numeri
 void jswrap_ESP8266_ping(
     JsVar *ipAddr,      //!< A string or integer representation of an IP address.
     JsVar *pingCallback //!< Optional callback function.
-  ) {
+) {
   memset(&pingOpt, 0, sizeof(pingOpt));
   // If the parameter is a string, get the IP address from the string
   // representation.
@@ -1736,6 +1759,148 @@ static void pingRecvCB(void *pingOpt, void *pingResponse) {
     params[0] = jsPingResponse;
     jsiQueueEvents(NULL, g_jsPingCallback, params, 1);
   }
+}
+
+// worker for jswrap_ESP8266_wifi_setIP and jswrap_ESP8266_wifi_setAPIP
+static void setIP(JsVar *jsSettings, JsVar *jsCallback, int interface) {
+  DBGV("> setIP\n");
+  
+  char ipTmp[20];
+  int len = 0;
+  bool rc = false;
+  memset(&info, 0, sizeof(info));
+
+// first check parameter 
+  if (!jsvIsObject(jsSettings)) {
+    EXPECT_OPT_EXCEPTION(jsSettings);
+    return;
+  }
+
+// get,check and store ip
+  JsVar *jsIP = jsvObjectGetChild(jsSettings, "ip", 0);
+  if (jsIP != NULL && !jsvIsString(jsIP)) {
+      EXPECT_OPT_EXCEPTION(jsIP);
+      jsvUnLock(jsIP);
+      return; 
+  }
+  jsvGetString(jsIP, ipTmp, sizeof(ipTmp)-1);
+  //DBG(">> ip: %s\n",ipTmp);
+  info.ip.addr = networkParseIPAddress(ipTmp); 
+  if ( info.ip.addr  == 0) {
+    jsExceptionHere(JSET_ERROR, "Not a valid IP address.");
+    jsvUnLock(jsIP);
+    return;
+  }
+  jsvUnLock(jsIP);
+
+// get, check and store gw
+  JsVar *jsGW = jsvObjectGetChild(jsSettings, "gw", 0);
+  if (jsGW != NULL && !jsvIsString(jsGW)) {
+      EXPECT_OPT_EXCEPTION(jsGW);
+      jsvUnLock(jsGW);
+      return ;
+  }
+  jsvGetString(jsGW, ipTmp, sizeof(ipTmp)-1);
+  //DBG(">> gw: %s\n",ipTmp);
+  info.gw.addr = networkParseIPAddress(ipTmp);
+  if (info.gw.addr == 0) {
+    jsExceptionHere(JSET_ERROR, "Not a valid Gateway address.");
+    jsvUnLock(jsGW);
+    return;
+  }
+  jsvUnLock(jsGW);
+
+// netmask setting
+  JsVar *jsNM = jsvObjectGetChild(jsSettings, "netmask", 0);
+  if (jsNM != NULL && !jsvIsString(jsNM)) {
+      EXPECT_OPT_EXCEPTION(jsNM);
+      jsvUnLock(jsNM);
+      return;
+  }  
+  jsvGetString(jsNM, ipTmp, sizeof(ipTmp)-1);
+  //DBG(">> netmask: %s\n",ipTmp);
+  info.netmask.addr = networkParseIPAddress(ipTmp); 
+  if (info.netmask.addr == 0) {
+    jsExceptionHere(JSET_ERROR, "Not a valid Netmask.");
+    jsvUnLock(jsNM);    
+    return;
+  }
+  jsvUnLock(jsNM);
+
+// set IP for station
+  if (interface == STATION_IF ) {
+    wifi_station_dhcpc_stop();
+    rc = wifi_set_ip_info(STATION_IF, &info);
+  }
+// set IP for access point
+  else {
+    wifi_softap_dhcps_stop();
+    rc = wifi_set_ip_info(SOFTAP_IF, &info);
+    wifi_softap_dhcps_start();
+  }
+
+  DBG(">> rc: %s\n", rc ? "true" : "false");
+
+// Schedule callback
+  if (jsvIsFunction(jsCallback)) {
+    JsVar *jsRC = jsvNewObject();
+    jsvObjectSetChildAndUnLock(jsRC, "success",jsvNewFromBool(rc));
+    JsVar *params[1];
+    params[0] = jsRC;
+    jsiQueueEvents(NULL, jsCallback, params, 1); 
+    jsvUnLock(params[0]);
+    jsvUnLock(jsRC);
+  }
+  else {
+    jsExceptionHere(JSET_ERROR, "Callback is not a function.");
+  }
+  DBGV("< setIP\n");
+  return ;
+};
+
+//===== Wifi.setIP
+/*JSON{
+  "type"     : "staticmethod",
+  "class"    : "Wifi",
+  "name"     : "setIP",
+  "generate" : "jswrap_ESP8266_wifi_setIP",
+  "params"   : [
+    ["settings", "JsVar", "Configuration settings"],
+    ["callback", "JsVar", "The callback to invoke when ip is set"]
+  ]
+}
+The `settings` object must contain the following properties.
+
+* `ip` IP address as string (e.g. "192.168.5.100")
+* `gw`  The network gateway as string (e.g. "192.168.5.1")
+* `netmask` The interface netmask as string (e.g. "255.255.255.0")
+
+*/
+void jswrap_ESP8266_wifi_setIP(JsVar *jsSettings, JsVar *jsCallback) {
+  setIP(jsSettings, jsCallback, STATION_IF);
+  return ;
+}
+
+//===== Wifi.setAPIP
+/*JSON{
+  "type"     : "staticmethod",
+  "class"    : "Wifi",
+  "name"     : "setAPIP",
+  "generate" : "jswrap_ESP8266_wifi_setAPIP",
+  "params"   : [
+    ["settings", "JsVar", "Configuration settings"],
+    ["callback", "JsVar", "The callback to invoke when ip is set"]
+  ]
+}
+The `settings` object must contain the following properties.
+
+* `ip` IP address as string (e.g. "192.168.5.100")
+* `gw`  The network gateway as string (e.g. "192.168.5.1")
+* `netmask` The interface netmask as string (e.g. "255.255.255.0")
+*/
+void jswrap_ESP8266_wifi_setAPIP(JsVar *jsSettings, JsVar *jsCallback) {
+  setIP(jsSettings, jsCallback, SOFTAP_IF);
+  return ;
 }
 
 
@@ -2001,7 +2166,7 @@ static void wifiEventHandler(System_Event_t *evt) {
     int rssi = evt->event_info.ap_probereqrecved.rssi;
     if (rssi > 0) rssi = 0;
     jsvObjectSetChildAndUnLock(jsDetails, "rssi", jsvNewFromInteger(rssi));
-    mac = evt->event_info.sta_connected.mac;
+    mac = evt->event_info.ap_probereqrecved.mac;
     os_sprintf(macAddrString, macFmt, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
     jsvObjectSetChildAndUnLock(jsDetails, "mac", jsvNewFromString(macAddrString));
     sendWifiEvent(evt->event, jsDetails);
