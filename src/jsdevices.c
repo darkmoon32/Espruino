@@ -14,6 +14,9 @@
 #include "jsdevices.h"
 #include "jsparse.h"
 #include "jsinteractive.h"
+#ifdef BLUETOOTH
+#include "bluetooth.h"
+#endif
 
 #ifdef LINUX
 #include <stdio.h>
@@ -54,8 +57,11 @@ typedef enum {
   SDS_XON_PENDING = 2,
   SDS_XOFF_SENT = 4, // sending XON clears this
   SDS_FLOW_CONTROL_XON_XOFF = 8, // flow control enabled
+  SDS_ERROR_HANDLING = 16
 } PACKED_FLAGS JshSerialDeviceState;
 JshSerialDeviceState jshSerialDeviceStates[EV_SERIAL1+USART_COUNT-EV_SERIAL_START];
+/// Device clear to send hardware flow control pins (PIN_UNDEFINED if not used)
+Pin jshSerialDeviceCTSPins[EV_SERIAL1+USART_COUNT-EV_SERIAL_START];
 #define TO_SERIAL_DEVICE_STATE(X) ((X)-EV_SERIAL_START)
 
 // ----------------------------------------------------------------------------
@@ -79,8 +85,10 @@ void jshResetDevices() {
   // Reset list of pins that were set manually
   jshResetPinStateIsManual();
   // setup flow control
-  for (i=0;i<sizeof(jshSerialDeviceStates) / sizeof(JshSerialDeviceState);i++)
+  for (i=0;i<sizeof(jshSerialDeviceStates) / sizeof(JshSerialDeviceState);i++) {
     jshSerialDeviceStates[i] = SDS_NONE;
+    jshSerialDeviceCTSPins[i] = PIN_UNDEFINED;
+  }
   jshSerialDeviceStates[TO_SERIAL_DEVICE_STATE(EV_USBSERIAL)] = SDS_FLOW_CONTROL_XON_XOFF;
   // reset callbacks for events
   for (i=EV_EXTI0;i<=EV_EXTI_MAX;i++)
@@ -124,6 +132,12 @@ void jshTransmit(
     return;
   }
 #endif
+#ifdef BLUETOOTH
+  if (device==EV_BLUETOOTH && !jsble_has_simple_connection()) {
+    jshTransmitClearDevice(EV_BLUETOOTH); // clear out stuff already waiting
+    return;
+  }
+#endif
 #else // if PC, just put to stdout
   if (device==DEFAULT_CONSOLE_DEVICE) {
     fputc(data, stdout);
@@ -143,6 +157,11 @@ void jshTransmit(
     bool wasConsoleLimbo = device==EV_LIMBO && jsiGetConsoleDevice()==EV_LIMBO;
     while (txHeadNext==txTail) {
       // wait for send to finish as buffer is about to overflow
+      if (jshIsInInterrupt()) {
+        // if we're printing from an IRQ, don't wait - it's unlikely TX will ever finish
+        jsErrorFlags |= JSERR_BUFFER_FULL;
+        return;
+      }
 #ifdef USB
       // just in case USB was unplugged while we were waiting!
       if (!jshIsUSBSERIALConnected()) jshTransmitClearDevice(EV_USBSERIAL);
@@ -562,7 +581,8 @@ IOEventFlags jshFromDeviceString(
 /// Set whether the host should transmit or not
 void jshSetFlowControlXON(IOEventFlags device, bool hostShouldTransmit) {
   if (DEVICE_IS_USART(device)) {
-    JshSerialDeviceState *deviceState = &jshSerialDeviceStates[TO_SERIAL_DEVICE_STATE(device)];
+    int devIdx = TO_SERIAL_DEVICE_STATE(device);
+    JshSerialDeviceState *deviceState = &jshSerialDeviceStates[devIdx];
     if ((*deviceState) & SDS_FLOW_CONTROL_XON_XOFF) {
       if (hostShouldTransmit) {
         if (((*deviceState)&(SDS_XOFF_SENT|SDS_XON_PENDING)) == SDS_XOFF_SENT) {
@@ -580,6 +600,9 @@ void jshSetFlowControlXON(IOEventFlags device, bool hostShouldTransmit) {
         }
       }
     }
+    Pin flowControlPin = jshSerialDeviceCTSPins[devIdx];
+    if (flowControlPin != PIN_UNDEFINED)
+      jshPinSetValue(flowControlPin, !hostShouldTransmit);
   }
 }
 
@@ -590,14 +613,22 @@ JsVar *jshGetDeviceObject(IOEventFlags device) {
   return jsvObjectGetChild(execInfo.root, deviceStr, 0);
 }
 
-/// Set whether to use flow control on the given device or not
-void jshSetFlowControlEnabled(IOEventFlags device, bool xOnXOff) {
+/// Set whether to use flow control on the given device or not. CTS is low when ready, high when not.
+void jshSetFlowControlEnabled(IOEventFlags device, bool software, Pin pinCTS) {
   if (!DEVICE_IS_USART(device)) return;
-  JshSerialDeviceState *deviceState = &jshSerialDeviceStates[TO_SERIAL_DEVICE_STATE(device)];
-  if (xOnXOff)
+  int devIdx = TO_SERIAL_DEVICE_STATE(device);
+  JshSerialDeviceState *deviceState = &jshSerialDeviceStates[devIdx];
+  if (software)
     (*deviceState) |= SDS_FLOW_CONTROL_XON_XOFF;
   else
     (*deviceState) &= ~SDS_FLOW_CONTROL_XON_XOFF;
+
+  jshSerialDeviceCTSPins[devIdx] = PIN_UNDEFINED;
+  if (jshIsPinValid(pinCTS)) {
+    jshPinSetState(pinCTS, JSHPINSTATE_GPIO_OUT);
+    jshPinSetValue(pinCTS, 0); // CTS ready
+    jshSerialDeviceCTSPins[devIdx] = pinCTS;
+  }
 }
 
 /// Set a callback function to be called when an event occurs
@@ -608,4 +639,19 @@ void jshSetEventCallback(
   // Save the callback function for this event channel.
   assert(channel>=EV_EXTI0 && channel<=EV_EXTI_MAX);
   jshEventCallbacks[channel-EV_EXTI0] = callback;
+}
+
+void jshSetErrorHandlingEnabled(IOEventFlags device, bool errorHandling) {
+  int devIdx = TO_SERIAL_DEVICE_STATE(device);
+  JshSerialDeviceState *deviceState = &jshSerialDeviceStates[devIdx];
+  if (errorHandling)
+    (*deviceState) |= SDS_ERROR_HANDLING;
+  else
+    (*deviceState) &= ~SDS_ERROR_HANDLING;
+}
+
+bool jshGetErrorHandlingEnabled(IOEventFlags device) {
+  int devIdx = TO_SERIAL_DEVICE_STATE(device);
+  JshSerialDeviceState *deviceState = &jshSerialDeviceStates[devIdx];
+  return (SDS_ERROR_HANDLING & *deviceState)!=0;
 }

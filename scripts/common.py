@@ -28,6 +28,8 @@ if silent:
   class Discarder(object):
     def write(self, text):
         pass # do nothing
+    def flush(self):
+        pass # do nothing
   # now discard everything coming out of stdout
   sys.stdout = Discarder()
 
@@ -155,7 +157,8 @@ def get_jsondata(is_for_document, parseArgs = True, board = False):
           jsondata = json.loads(jsonstring)
           if len(description): jsondata["description"] = description;
           jsondata["filename"] = jswrap
-          jsondata["include"] = jswrap[:-2]+".h"
+          if jswrap[-2:]==".c":
+            jsondata["include"] = jswrap[:-2]+".h"
           jsondata["githublink"] = "https://github.com/espruino/Espruino/blob/master/"+jswrap+"#L"+str(linenumber)
 
           dropped_prefix = "Dropped "
@@ -179,6 +182,8 @@ def get_jsondata(is_for_document, parseArgs = True, board = False):
                   dname = defn[:defn.find('=')]
                   dkey = defn[defn.find('=')+1:]
                   expr = expr.replace(dname, dkey);
+              # Now replace any defined(...) we haven't heard of with false
+              expr = re.sub(r"defined\([^\)]*\)", "False", expr)
               try:
                 r = eval(expr)
               except:
@@ -328,9 +333,10 @@ def get_struct_from_jsondata(jsondata):
 def get_includes_from_jsondata(jsondatas):
         includes = []
         for jsondata in jsondatas:
-          include = jsondata["include"]
-          if not include in includes:
-                includes.append(include)
+          if "include" in jsondata:
+            include = jsondata["include"]
+            if not include in includes:
+              includes.append(include)
         return includes
 
 def is_property(jsondata):
@@ -352,6 +358,7 @@ def get_ifdef_description(d):
   if d=="SAVE_ON_FLASH": return "devices with low flash memory"
   if d=="STM32F1": return "STM32F1 devices (including Original Espruino Board)"
   if d=="NRF52": return "NRF52 devices (like Puck.js)"
+  if d=="ESP8266": return "Espruino running on ESP8266"
   if d=="USE_LCD_SDL": return "Linux with SDL support compiled in"
   if d=="USE_TLS": return "devices with TLS and SSL support (Espruino Pico and Espruino WiFi only)"
   if d=="RELEASE": return "release builds"

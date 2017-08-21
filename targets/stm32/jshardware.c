@@ -29,6 +29,7 @@
 #include "jsinteractive.h"
 #include "jswrap_io.h"
 #include "jsspi.h"
+#include "jsflags.h"
 
 #ifdef ESPRUINOBOARD
 // STM32F1 boards should work with this - but for some reason they crash on init
@@ -839,6 +840,10 @@ void jshInterruptOn() {
   //  jshPinSetValue(LED4_PININDEX,0);
 }
 
+/// Are we currently in an interrupt?
+bool jshIsInInterrupt() {
+  return (SCB->ICSR & SCB_ICSR_VECTACTIVE_Msk) != 0;
+}
 
 //int JSH_DELAY_OVERHEAD = 0;
 int JSH_DELAY_MULTIPLIER = 1;
@@ -1426,10 +1431,10 @@ JsSysTime jshGetRTCSystemTime() {
 
   CalendarDate cdate;
   TimeInDay ctime;
-  cdate.day = date.RTC_Date;
-  cdate.month = date.RTC_Month;
-  cdate.year = 2000+date.RTC_Year;
-  cdate.dow = date.RTC_WeekDay%7;
+  cdate.day = date.RTC_Date; // 1..31 -> 1..31
+  cdate.month = date.RTC_Month-1; // 1..12 -> 0..11
+  cdate.year = 2000+date.RTC_Year; // 0..99 -> 2000..2099
+  cdate.dow = date.RTC_WeekDay%7; // 1(monday)..7 -> 0(sunday)..6
   ctime.daysSinceEpoch = fromCalenderDate(&cdate);
   ctime.zone = 0;
   ctime.ms = 0;
@@ -1496,13 +1501,15 @@ void jshSetSystemTime(JsSysTime newTime) {
   RTC_DateTypeDef date;
 
 
-  TimeInDay ctime = getTimeFromMilliSeconds((JsVarFloat)newTime * 1000 / JSSYSTIME_SECOND);
+  TimeInDay ctime = getTimeFromMilliSeconds((JsVarFloat)newTime * 1000 / JSSYSTIME_SECOND, true /*force to GMT*/);
   CalendarDate cdate = getCalendarDate(ctime.daysSinceEpoch);
 
-  date.RTC_Date = (uint8_t)cdate.day;
-  date.RTC_Month = (uint8_t)cdate.month;
-  date.RTC_Year = (uint8_t)(cdate.year - 2000);
-  date.RTC_WeekDay = (uint8_t)(cdate.dow + 1);
+  date.RTC_Date = (uint8_t)cdate.day; // 1..31 -> 1..31
+  date.RTC_Month = (uint8_t)(cdate.month+1); // 0..11 -> 1..12
+  date.RTC_Year = (uint8_t)(cdate.year - 2000); //  2000..2099 -> 0..99
+  if (date.RTC_Year>99) date.RTC_Year=0; // overflow
+  date.RTC_WeekDay = (uint8_t)(cdate.dow); // 0(sunday)..6 -> 1(monday)..7
+  if (date.RTC_WeekDay==0) date.RTC_WeekDay=7; // 1-based
 
   time.RTC_Seconds = (uint8_t)ctime.sec;
   time.RTC_Minutes = (uint8_t)ctime.min;
@@ -1979,7 +1986,8 @@ void jshUSARTSetup(IOEventFlags device, JshUSARTInfo *inf) {
 
   jshSetDeviceInitialised(device, true);
 
-  jshSetFlowControlEnabled(device, inf->xOnXOff);
+  jshSetFlowControlEnabled(device, inf->xOnXOff, inf->pinCTS);
+  jshSetErrorHandlingEnabled(device, inf->errorHandling);
 
   JshPinFunction funcType = jshGetPinFunctionFromDevice(device);
   if (funcType==0) return; // not a proper serial port, ignore it
@@ -2311,7 +2319,7 @@ void jshI2CWrite(IOEventFlags device, unsigned char address, int nBytes, const u
   I2C_ClearFlag(I2C, I2C_FLAG_STOPF);
   if (I2C_GetFlagStatus(I2C, I2C_FLAG_NACKF) != RESET) {
     I2C_ClearFlag(I2C, I2C_FLAG_NACKF);
-    jsWarn("I2C got NACK");
+    jsExceptionHere(JSET_INTERNALERROR, "I2C got NACK");
   }
 #else
   WAIT_UNTIL(!I2C_GetFlagStatus(I2C, I2C_FLAG_BUSY), "I2C Write BUSY");
@@ -2349,7 +2357,7 @@ void jshI2CRead(IOEventFlags device, unsigned char address, int nBytes, unsigned
   I2C_ClearFlag(I2C, I2C_FLAG_STOPF);
   if (I2C_GetFlagStatus(I2C, I2C_FLAG_NACKF) != RESET) {
     I2C_ClearFlag(I2C, I2C_FLAG_NACKF);
-    jsWarn("I2C got NACK");
+    jsExceptionHere(JSET_INTERNALERROR,"I2C got NACK");
   }
 #else
   I2C_GenerateSTART(I2C, ENABLE);
@@ -2415,7 +2423,7 @@ bool jshSleep(JsSysTime timeUntilWake) {
        What about EXTI line 18 - USB Wakeup event
        Check time until wake against where we are in the RTC counter - we can sleep for 0.1 sec if we're 90% of the way through the counter...
    */
-  if ((jsiStatus & JSIS_ALLOW_DEEP_SLEEP) &&  // from setDeepSleep
+  if (jsfGetFlag(JSF_DEEP_SLEEP) &&  // from setDeepSleep
 #ifdef STM32F1
       (timeUntilWake > (jshGetTimeForSecond()*3/2)) &&  // if there's less time that this then we can't go to sleep because we can't be sure we'll wake in time
 #else
@@ -2989,4 +2997,3 @@ unsigned int jshSetSystemClock(JsVar *options) {
   return 0;
 #endif
 }
-

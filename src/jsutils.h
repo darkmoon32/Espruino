@@ -26,9 +26,9 @@
 #include <math.h>
 
 #ifndef BUILDNUMBER
-#define JS_VERSION "1v92"
+#define JS_VERSION "1v93"
 #else
-#define JS_VERSION "1v92." BUILDNUMBER
+#define JS_VERSION "1v93." BUILDNUMBER
 #endif
 /*
   In code:
@@ -242,6 +242,7 @@ typedef int64_t JsSysTime;
 #define JSPARSE_FUNCTION_NAME_NAME JS_HIDDEN_CHAR_STR"nam" // for named functions (a = function foo() { foo(); })
 #define JSPARSE_FUNCTION_LINENUMBER_NAME JS_HIDDEN_CHAR_STR"lin" // The line number offset of the function
 #define JS_EVENT_PREFIX "#on"
+#define JS_TIMEZONE_VAR "tz"
 
 #define JSPARSE_EXCEPTION_VAR "except" // when exceptions are thrown, they're stored in the root scope
 #define JSPARSE_STACKTRACE_VAR "sTrace" // for errors/exceptions, a stack trace is stored as a string
@@ -403,11 +404,12 @@ typedef enum {
   JSERR_LOW_MEMORY = 8, ///< Memory is running low - Espruino had to run a garbage collection pass or remove some of the command history
   JSERR_MEMORY = 16, ///< Espruino ran out of memory and was unable to allocate some data that it needed.
   JSERR_MEMORY_BUSY = 32, ///< Espruino was busy doing something with memory (eg. garbage collection) so an IRQ couldn't allocate memory
+  JSERR_UART_OVERFLOW = 64 ///< A UART received data but it was not read in time and was lost
 } PACKED_FLAGS JsErrorFlags;
 
 /** Error flags for things that we don't really want to report on the console,
  * but which are good to know about */
-extern JsErrorFlags jsErrorFlags;
+extern volatile JsErrorFlags jsErrorFlags;
 
 JsVarFloat stringToFloatWithRadix(const char *s, int forceRadix);
 JsVarFloat stringToFloat(const char *str);

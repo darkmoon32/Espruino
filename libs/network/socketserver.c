@@ -195,7 +195,14 @@ void _socketConnectionKill(JsNetwork *net, JsVar *connection) {
   if (sckt>=0) {
     netCloseSocket(net, sckt);
     jsvObjectRemoveChild(connection,HTTP_NAME_SOCKET);
+    jsvObjectSetChildAndUnLock(connection, HTTP_NAME_CONNECTED, jsvNewFromBool(false));
+    jsvObjectSetChildAndUnLock(connection, HTTP_NAME_CLOSE, jsvNewFromBool(true));
   }
+}
+
+bool _socketConnectionOpen(JsVar *connection) {
+  return !(jsvGetBoolAndUnLock(jsvObjectGetChild(connection, HTTP_NAME_CLOSENOW, false)) ||
+           jsvGetBoolAndUnLock(jsvObjectGetChild(connection, HTTP_NAME_CLOSE, false)));
 }
 
 // -----------------------------
@@ -225,11 +232,11 @@ NO_INLINE static void _socketCloseAllConnections(JsNetwork *net) {
 
 // returns 0 on success and a (negative) error number on failure
 int socketSendData(JsNetwork *net, JsVar *connection, int sckt, JsVar **sendData) {
-  char *buf = alloca(net->chunkSize); // allocate on stack
+  char *buf = alloca((size_t)net->chunkSize); // allocate on stack
 
   assert(!jsvIsEmptyString(*sendData));
 
-  size_t bufLen = httpStringGet(*sendData, buf, net->chunkSize);
+  size_t bufLen = httpStringGet(*sendData, buf, (size_t)net->chunkSize);
   int num = netSend(net, sckt, buf, bufLen);
   if (num < 0) return num; // an error occurred
   // Now cut what we managed to send off the beginning of sendData
@@ -296,7 +303,7 @@ static bool fireErrorEvent(int error, JsVar *obj1, JsVar *obj2) {
 // -----------------------------
 
 bool socketServerConnectionsIdle(JsNetwork *net) {
-  char *buf = alloca(net->chunkSize); // allocate on stack
+  char *buf = alloca((size_t)net->chunkSize); // allocate on stack
 
   JsVar *arr = socketGetArray(HTTP_ARRAY_HTTP_SERVER_CONNECTIONS,false);
   if (!arr) return false;
@@ -317,7 +324,7 @@ bool socketServerConnectionsIdle(JsNetwork *net) {
     int error = 0;
 
     if (!closeConnectionNow) {
-      int num = netRecv(net, sckt, buf, net->chunkSize);
+      int num = netRecv(net, sckt, buf, (size_t)net->chunkSize);
       if (num<0) {
         // we probably disconnected so just get rid of this
         closeConnectionNow = true;
@@ -345,7 +352,7 @@ bool socketServerConnectionsIdle(JsNetwork *net) {
                 jsvObjectSetChildAndUnLock(connection, HTTP_NAME_RECEIVE_COUNT,
                     jsvNewFromInteger(
                       jsvGetIntegerAndUnLock(jsvObjectGetChild(connection, HTTP_NAME_RECEIVE_COUNT, JSV_INTEGER)) +
-                      jsvGetStringLength(receiveData)
+                      (JsVarInt)jsvGetStringLength(receiveData)
                     ));
               }
               // execute 'data' callback or save data
@@ -413,10 +420,12 @@ bool socketServerConnectionsIdle(JsNetwork *net) {
       bool hadError = fireErrorEvent(error, connection, socket);
 
       // fire the close listeners
-      jsiQueueObjectCallbacks(connection, HTTP_NAME_ON_END, NULL, 0);
+      if (connection!=socket)
+        jsiQueueObjectCallbacks(connection, HTTP_NAME_ON_END, NULL, 0);
       jsiQueueObjectCallbacks(socket, HTTP_NAME_ON_END, NULL, 0);
       JsVar *params[1] = { jsvNewFromBool(hadError) };
-      jsiQueueObjectCallbacks(connection, HTTP_NAME_ON_CLOSE, params, 1);
+      if (connection!=socket)
+        jsiQueueObjectCallbacks(connection, HTTP_NAME_ON_CLOSE, params, 1);
       jsiQueueObjectCallbacks(socket, HTTP_NAME_ON_CLOSE, params, 1);
       jsvUnLock(params[0]);
 
@@ -449,7 +458,7 @@ void socketClientPushReceiveData(JsVar *connection, JsVar *socket, JsVar **recei
 }
 
 bool socketClientConnectionsIdle(JsNetwork *net) {
-  char *buf = alloca(net->chunkSize); // allocate on stack
+  char *buf = alloca((size_t)net->chunkSize); // allocate on stack
 
   JsVar *arr = socketGetArray(HTTP_ARRAY_HTTP_CLIENT_CONNECTIONS,false);
   if (!arr) return false;
@@ -485,8 +494,8 @@ bool socketClientConnectionsIdle(JsNetwork *net) {
       if (hadHeaders)
         socketClientPushReceiveData(connection, socket, &receiveData);
 
-      JsVar *sendData = jsvObjectGetChild(connection,HTTP_NAME_SEND_DATA,0);
       if (!closeConnectionNow) {
+        JsVar *sendData = jsvObjectGetChild(connection,HTTP_NAME_SEND_DATA,0);
         // send data if possible
         if (sendData && !jsvIsEmptyString(sendData)) {
           // don't try to send if we're already in error state
@@ -509,7 +518,7 @@ bool socketClientConnectionsIdle(JsNetwork *net) {
         }
         // Now read data if possible (and we have space for it)
         if (!receiveData || !hadHeaders) {
-          int num = netRecv(net, sckt, buf, net->chunkSize);
+          int num = netRecv(net, sckt, buf, (size_t)net->chunkSize);
           //if (num != 0) printf("recv returned %d\r\n", num);
           if (!alreadyConnected && num == SOCKET_ERR_NO_CONN) {
             ; // ignore... it's just telling us we're not connected yet
@@ -558,9 +567,6 @@ bool socketClientConnectionsIdle(JsNetwork *net) {
     if (closeConnectionNow) {
       socketClientPushReceiveData(connection, socket, &receiveData);
       if (!receiveData) {
-        if ((socketType&ST_TYPE_MASK) != ST_HTTP)
-          jsiQueueObjectCallbacks(socket, HTTP_NAME_ON_END, &socket, 1);
-
         // If we had data to send but the socket closed, this is an error
         JsVar *sendData = jsvObjectGetChild(connection,HTTP_NAME_SEND_DATA,0);
         if (sendData && jsvGetStringLength(sendData) > 0 && error == SOCKET_ERR_CLOSED)
@@ -679,7 +685,7 @@ void serverListen(JsNetwork *net, JsVar *server, int port) {
 
   jsvObjectSetChildAndUnLock(server, HTTP_NAME_PORT, jsvNewFromInteger(port));
 
-  int sckt = netCreateSocket(net, 0/*server*/, (unsigned short)port, NCF_NORMAL, 0 /*options*/);
+  int sckt = netCreateSocket(net, 0/*server*/, (unsigned short)port, ST_NORMAL, 0 /*options*/);
   if (sckt<0) {
     jsExceptionHere(JSET_INTERNALERROR, "Unable to create socket\n");
     jsvObjectSetChildAndUnLock(server, HTTP_NAME_CLOSENOW, jsvNewFromBool(true));
@@ -697,7 +703,7 @@ void serverClose(JsNetwork *net, JsVar *server) {
     // close socket
     _socketConnectionKill(net, server);
     // remove from array
-    JsVar *idx = jsvGetArrayIndexOf(arr, server, true);
+    JsVar *idx = jsvGetIndexOf(arr, server, true);
     if (idx) {
       jsvRemoveChild(arr, idx);
       jsvUnLock(idx);
@@ -734,6 +740,10 @@ JsVar *clientRequestNew(SocketType socketType, JsVar *options, JsVar *callback) 
 }
 
 void clientRequestWrite(JsNetwork *net, JsVar *httpClientReqVar, JsVar *data) {
+  if (!_socketConnectionOpen(httpClientReqVar)) {
+    jsExceptionHere(JSET_ERROR, "This socket is closed.");
+    return;
+  }
   SocketType socketType = socketGetType(httpClientReqVar);
   // Append data to sendData
   JsVar *sendData = jsvObjectGetChild(httpClientReqVar, HTTP_NAME_SEND_DATA, 0);
@@ -747,7 +757,7 @@ void clientRequestWrite(JsNetwork *net, JsVar *httpClientReqVar, JsVar *data) {
       // We're an HTTP client - make a header
       JsVar *method = jsvObjectGetChild(options, "method", 0);
       JsVar *path = jsvObjectGetChild(options, "path", 0);
-      sendData = jsvVarPrintf("%v %v HTTP/1.0\r\nUser-Agent: Espruino "JS_VERSION"\r\nConnection: close\r\n", method, path);
+      sendData = jsvVarPrintf("%v %v HTTP/1.1\r\nUser-Agent: Espruino "JS_VERSION"\r\nConnection: close\r\n", method, path);
       jsvUnLock2(method, path);
       JsVar *headers = jsvObjectGetChild(options, "headers", 0);
       bool hasHostHeader = false;
@@ -834,17 +844,15 @@ void clientRequestConnect(JsNetwork *net, JsVar *httpClientReqVar) {
     return;
   }
 
-  NetCreateFlags flags = NCF_NORMAL;
 #ifdef USE_TLS
   if (socketType & ST_TLS) {
-    flags |= NCF_TLS;
     if (port==0) port = 443;
   }
 #endif
 
   if (port==0) port = 80;
 
-  int sckt =  netCreateSocket(net, host_addr, port, flags, options);
+  int sckt =  netCreateSocket(net, host_addr, port, socketType, options);
   if (sckt<0) {
     jsExceptionHere(JSET_INTERNALERROR, "Unable to create socket\n");
     // As this is already in the list of connections, an error will be thrown on idle anyway
@@ -897,7 +905,7 @@ void serverResponseWriteHead(JsVar *httpServerResponseVar, int statusCode, JsVar
     return;
   }
 
-  sendData = jsvVarPrintf("HTTP/1.0 %d OK\r\nServer: Espruino "JS_VERSION"\r\n", statusCode);
+  sendData = jsvVarPrintf("HTTP/1.1 %d OK\r\nServer: Espruino "JS_VERSION"\r\n", statusCode);
   if (headers) httpAppendHeaders(sendData, headers);
   // finally add ending newline
   jsvAppendString(sendData, "\r\n");
@@ -906,6 +914,10 @@ void serverResponseWriteHead(JsVar *httpServerResponseVar, int statusCode, JsVar
 
 
 void serverResponseWrite(JsVar *httpServerResponseVar, JsVar *data) {
+  if (!_socketConnectionOpen(httpServerResponseVar)) {
+    jsExceptionHere(JSET_ERROR, "This socket is closed.");
+    return;
+  }
   // Append data to sendData
   JsVar *sendData = jsvObjectGetChild(httpServerResponseVar, HTTP_NAME_SEND_DATA, 0);
   if (!sendData) {

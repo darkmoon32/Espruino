@@ -62,7 +62,7 @@ bool net_js_checkError(JsNetwork *net) {
 }
 
 /// if host=0, creates a server otherwise creates a client (and automatically connects). Returns >=0 on success
-int net_js_createsocket(JsNetwork *net, uint32_t host, unsigned short port) {
+int net_js_createsocket(JsNetwork *net, uint32_t host, unsigned short port, SocketType socketType) {
   NOT_USED(net);
   JsVar *hostVar = 0;
   if (host!=0) {
@@ -120,6 +120,12 @@ int net_js_recv(JsNetwork *net, int sckt, void *buf, size_t len) {
     if (r>(int)len) { r=(int)len; assert(0); }
     jsvGetStringChars(res, 0, (char*)buf, (size_t)r);
     // FIXME: jsvGetStringChars adds a 0 - does that actually write past the end of the array, or clip the data we get?
+  } else if (jsvIsInt(res)) {
+    r = jsvGetInteger(res);
+    if (r>=0) {
+      jsExceptionHere(JSET_ERROR, "JSNetwork.recv returned >=0");
+      r=-1;
+    }
   }
   jsvUnLock(res);
   return r;

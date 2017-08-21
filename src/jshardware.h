@@ -94,6 +94,7 @@ JsVarFloat jshGetMillisecondsFromTime(JsSysTime time);
 // software IO functions...
 void jshInterruptOff(); ///< disable interrupts to allow short delays to be accurate
 void jshInterruptOn();  ///< re-enable interrupts
+bool jshIsInInterrupt(); ///< Are we currently in an interrupt?
 void jshDelayMicroseconds(int microsec);  ///< delay a few microseconds. Should use used sparingly and for very short periods - max 1ms
 
 void jshPinSetValue(Pin pin, bool value); ///< Set a digital output to 1 or 0. DOES NOT change pin state OR CHECK PIN VALIDITY
@@ -232,11 +233,13 @@ typedef struct {
   int baudRate;            /// FIXME uint32_t ???
   Pin pinRX;
   Pin pinTX;
-  Pin pinCK;
+  Pin pinCK;               ///< Clock, or PIN_UNDEFINED
+  Pin pinCTS;              ///< Clear to send, or PIN_UNDEFINED
   unsigned char bytesize;  ///< size of byte, 7 or 8
   unsigned char parity;    ///< 0=none, 1=odd, 2=even
   unsigned char stopbits;  ///< 1 or 2
   bool xOnXOff;            ///< XON XOFF flow control?
+  bool errorHandling;      ///< Whether to forward parity/framing errors
 } PACKED_FLAGS JshUSARTInfo;
 
 /// Initialise a JshUSARTInfo struct to default settings

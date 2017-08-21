@@ -581,9 +581,24 @@ Enable the watchdog timer. This will reset Espruino if it isn't able to return t
 
 If `isAuto` is false, you must call `E.kickWatchdog()` yourself every so often or the chip will reset.
 
+```
+E.enableWatchdog(0.5); // automatic mode                                                        
+while(1); // Espruino will reboot because it has not been idle for 0.5 sec
+```
+
+```
+E.enableWatchdog(1, false);                                                         
+setInterval(function() {
+  if (everything_ok)
+    E.kickWatchdog();
+}, 500);
+// Espruino will now reset if everything_ok is false,
+// or if the interval fails to be called 
+```
+
 **NOTE:** This will not work with `setDeepSleep` unless you explicitly wake Espruino up with an interval of less than the timeout.
 
-**NOTE:** This is only implemented on STM32 devices.
+**NOTE:** This is only implemented on STM32 and nRF5x devices (all official Espruino boards).
  */
 void jswrap_espruino_enableWatchdog(JsVarFloat time, JsVar *isAuto) {
   if (time<0 || isnan(time)) time=1;
@@ -604,10 +619,25 @@ void jswrap_espruino_enableWatchdog(JsVarFloat time, JsVar *isAuto) {
 Kicks a Watchdog timer set up with `E.enableWatchdog(..., false)`. See
 `E.enableWatchdog` for more information.
 
-**NOTE:** This is only implemented on STM32 devices.
+**NOTE:** This is only implemented on STM32 and nRF5x devices (all official Espruino boards).
  */
 void jswrap_espruino_kickWatchdog() {
   jshKickWatchDog();
+}
+
+/// Return an array of errors based on the current flags
+JsVar *jswrap_espruino_getErrorFlagArray(JsErrorFlags flags) {
+  JsVar *arr = jsvNewEmptyArray();
+  if (!arr) return 0;
+  if (flags&JSERR_RX_FIFO_FULL) jsvArrayPushAndUnLock(arr, jsvNewFromString("FIFO_FULL"));
+  if (flags&JSERR_BUFFER_FULL) jsvArrayPushAndUnLock(arr, jsvNewFromString("BUFFER_FULL"));
+  if (flags&JSERR_CALLBACK) jsvArrayPushAndUnLock(arr, jsvNewFromString("CALLBACK"));
+  if (flags&JSERR_LOW_MEMORY) jsvArrayPushAndUnLock(arr, jsvNewFromString("LOW_MEMORY"));
+  if (flags&JSERR_MEMORY) jsvArrayPushAndUnLock(arr, jsvNewFromString("MEMORY"));
+  if (flags&JSERR_MEMORY_BUSY) jsvArrayPushAndUnLock(arr, jsvNewFromString("MEMORY_BUSY"));
+  if (flags&JSERR_UART_OVERFLOW) jsvArrayPushAndUnLock(arr, jsvNewFromString("UART_OVERFLOW"));
+
+  return arr;
 }
 
 /*JSON{
@@ -629,19 +659,41 @@ Get and reset the error flags. Returns an array that can contain:
 `'LOW_MEMORY'`: Memory is running low - Espruino had to run a garbage collection pass or remove some of the command history
 
 `'MEMORY'`: Espruino ran out of memory and was unable to allocate some data that it needed.
+
+`'JSERR_UART_OVERFLOW'` : A UART received data but it was not read in time and was lost
  */
 JsVar *jswrap_espruino_getErrorFlags() {
-  JsVar *arr = jsvNewEmptyArray();
-  if (!arr) return 0;
-  if (jsErrorFlags&JSERR_RX_FIFO_FULL) jsvArrayPushAndUnLock(arr, jsvNewFromString("FIFO_FULL"));
-  if (jsErrorFlags&JSERR_BUFFER_FULL) jsvArrayPushAndUnLock(arr, jsvNewFromString("BUFFER_FULL"));
-  if (jsErrorFlags&JSERR_CALLBACK) jsvArrayPushAndUnLock(arr, jsvNewFromString("CALLBACK"));
-  if (jsErrorFlags&JSERR_LOW_MEMORY) jsvArrayPushAndUnLock(arr, jsvNewFromString("LOW_MEMORY"));
-  if (jsErrorFlags&JSERR_MEMORY) jsvArrayPushAndUnLock(arr, jsvNewFromString("MEMORY"));
-  if (jsErrorFlags&JSERR_MEMORY_BUSY) jsvArrayPushAndUnLock(arr, jsvNewFromString("JSERR_MEMORY_BUSY"));
+  JsErrorFlags flags = jsErrorFlags;
   jsErrorFlags = JSERR_NONE;
-  return arr;
+  return jswrap_espruino_getErrorFlagArray(flags);
 }
+
+
+/*JSON{
+  "type" : "staticmethod",
+  "class" : "E",
+  "name" : "getFlags",
+  "generate" : "jsfGetFlags",
+  "return" : ["JsVar","An object containing flag names and their values"]
+}
+Get Espruino's interpreter flags that control the way it handles your JavaScript code.
+
+* `deepSleep` - Allow deep sleep modes (also set by setDeepSleep)
+* `pretokenise` - When adding functions, pre-minify them and tokenise reserved words
+*/
+/*JSON{
+  "type" : "staticmethod",
+  "class" : "E",
+  "name" : "setFlags",
+  "generate" : "jsfSetFlags",
+  "params" : [
+    ["flags","JsVar","An object containing flag names and boolean values. You need only specify the flags that you want to change."]
+  ]
+}
+Set the Espruino interpreter flags that control the way it handles your JavaScript code.
+
+Run `E.getFlags()` and check its description for a list of available flags and their values.
+*/
 
 /*JSON{
   "type" : "staticmethod",
@@ -756,7 +808,7 @@ JsVar *jswrap_espruino_memoryArea(int addr, int len) {
   }
   JsVar *v = jsvNewWithFlags(JSV_NATIVE_STRING);
   if (!v) return 0;
-  v->varData.nativeStr.ptr = (char*)addr;
+  v->varData.nativeStr.ptr = (char*)(size_t)addr;
   v->varData.nativeStr.len = (uint16_t)len;
   return v;
 }
@@ -1175,6 +1227,25 @@ void jswrap_espruino_lockConsole() {
   if (pwd)
     jsiStatus |= JSIS_PASSWORD_PROTECTED;
   jsvUnLock(pwd);
+}
+
+/*JSON{
+  "type" : "staticmethod",
+  "ifndef" : "SAVE_ON_FLASH",
+  "class" : "E",
+  "name" : "setTimeZone",
+  "generate" : "jswrap_espruino_setTimeZone",
+  "params" : [
+    ["zone","float","The time zone in hours"]
+  ]
+}
+Set the time zone to be used with `Date` objects.
+
+For example `E.setTimeZone(1)` will be GMT+0100
+*/
+void jswrap_espruino_setTimeZone(JsVarFloat zone) {
+  jsvObjectSetChildAndUnLock(execInfo.hiddenRoot, JS_TIMEZONE_VAR,
+      jsvNewFromInteger((int)(zone*60)));
 }
 
 // ----------------------------------------- USB Specific Stuff

@@ -54,12 +54,12 @@ ifndef SINGLETHREAD
 MAKEFLAGS=-j5 # multicore
 endif
 
-INCLUDE=-I$(ROOT) -I$(ROOT)/targets -I$(ROOT)/src -I$(GENDIR)
-LIBS=
-DEFINES=
-CFLAGS=-Wall -Wextra -Wconversion -Werror=implicit-function-declaration -fno-strict-aliasing
-LDFLAGS=-Winline
-OPTIMIZEFLAGS=
+INCLUDE?=-I$(ROOT) -I$(ROOT)/targets -I$(ROOT)/src -I$(GENDIR)
+LIBS?=
+DEFINES?=
+CFLAGS?=-Wall -Wextra -Wconversion -Werror=implicit-function-declaration -fno-strict-aliasing
+LDFLAGS?=-Winline
+OPTIMIZEFLAGS?=
 #-fdiagnostics-show-option - shows which flags can be used with -Werror
 DEFINES+=-DGIT_COMMIT=$(shell git log -1 --format="%H")
 
@@ -136,6 +136,7 @@ ifeq ($(BOARD),)
   #$(info *           To build, use BOARD=my_board make               *)
   #$(info *************************************************************)
   BOARD=LINUX
+  DEFINES+=-DSYSFS_GPIO_DIR="\"/sys/class/gpio\""
  endif
 endif
 
@@ -242,6 +243,7 @@ src/jswrap_waveform.c \
 # integers (as the check for int *includes* the chek for pin)
 SOURCES = \
 src/jslex.c \
+src/jsflags.c \
 src/jsvar.c \
 src/jsvariterator.c \
 src/jsutils.c \
@@ -443,7 +445,9 @@ ifdef USE_NET
 
  ifdef USE_ESP32
  DEFINES += -DUSE_ESP32
- WRAPPERSOURCES += libs/network/esp32/jswrap_esp32_network.c \
+ WRAPPERSOURCES += \
+   libs/network/jswrap_wifi.c \
+   libs/network/esp32/jswrap_esp32_network.c \
    targets/esp32/jswrap_esp32.c
  INCLUDE += -I$(ROOT)/libs/network/esp32
  SOURCES +=  libs/network/esp32/network_esp32.c \
@@ -463,7 +467,9 @@ ifdef USE_NET
 
  ifdef USE_ESP8266
  DEFINES += -DUSE_ESP8266
- WRAPPERSOURCES += libs/network/esp8266/jswrap_esp8266_network.c \
+ WRAPPERSOURCES += \
+   libs/network/jswrap_wifi.c \
+   libs/network/esp8266/jswrap_esp8266_network.c \
    targets/esp8266/jswrap_esp8266.c \
    targets/esp8266/jswrap_nodemcu.c
  INCLUDE += -I$(ROOT)/libs/network/esp8266
@@ -595,11 +601,23 @@ ifdef USE_NFC
 endif
 
 ifdef USE_NUCLEO
-WRAPPERSOURCES += targets/nucleo/jswrap_nucleo.c
+  WRAPPERSOURCES += targets/nucleo/jswrap_nucleo.c
 endif
 
+ifdef USE_HEXBADGE
+  INCLUDE += -I$(ROOT)/libs/hexbadge
+  WRAPPERSOURCES += libs/hexbadge/jswrap_hexbadge.c
+endif
+
+ifdef USE_WIO_LTE
+  INCLUDE += -I$(ROOT)/libs/wio_lte
+  WRAPPERSOURCES += libs/wio_lte/jswrap_wio_lte.c
+  SOURCES += targets/stm32/stm32_ws2812b_driver.c
+endif
+
+
 ifdef WICED
-WRAPPERSOURCES += targets/emw3165/jswrap_emw3165.c
+  WRAPPERSOURCES += targets/emw3165/jswrap_emw3165.c
 endif
 
 endif # BOOTLOADER ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ DON'T USE STUFF ABOVE IN BOOTLOADER

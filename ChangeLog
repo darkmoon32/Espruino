@@ -1,3 +1,80 @@
+            Allow Espruino boards to reset straight out of the DFU Bootloader             
+            Improvements in handling errors in code running in IRQs
+             - if writing to disconnected Bluetooth device, throw data away immediately
+             - Drop chars if output buffer is full while waiting in an IRQ
+             - Handle out of memory errors in jsvCreateNewChild
+             - Do not garbage collect inside an IRQ
+            On nRF52 devices, allow button press at boot to clear out peer manager data
+            Work out length of typed array with offset correctly (fix #1204)
+            nRF5x: Add Watchdog timer handling
+            nRF52: start new connections on idle to ease memory allocation conflicts between code execution & IRQs
+            nRF52: Ignore INVALID_STATE from CONN_PARAM_UPDATE_REQUEST (it can happen if we disconnect and then SD requests an update)
+            Fix Date.toString for dates before 1970
+            STM32: Fix handling of months when setting the internal RTC
+            Move to a faster jsvNewFlatStringOfLength which avoids blocking memory allocation
+            nRF5x: If a task is in progress, report the task ID (BleTask enum)
+            nRF52: Report central mode promise errors correctly if returned by softdevice
+            Remove 'out of memory' warning messages (it's stored as a flag anyway)
+            nRF5x: Don't disable IRQs completely for some things - only disable Espruino ones
+            Fix tab complete for Pins (fix #1213)
+            ESP8266: Fix load() causes endless loops (fix #1037)
+            ESP8266: Wifi library doesn't handle {password: null} (fix #753)
+            ESP8266: make topstrings and topreadonly work on Mac OS X (fix #1210)
+            Change order of execution for init - E.on('init',...) now executed before onInit
+            Added Error flag to show if a UART overflow has occurred
+            Change more instances of jsWarn to jsException
+            Avoid printing error messages during execution, and report to console on idle when if errors were flagged (fix #766)
+            Increase HTTP server and client version from 1.0 to 1.1 (needed for Websockets on Safari)
+            Stop 'require' creating an undefined Module entry in the modules list (fix #1218)
+            Stop require dumping filesystem errors as well as 'module not found'
+            Now throw an exception when writing to a closed socket (fix #1220)
+            Set the internal 'conn' variable to false when a connection closes to avoid confusion
+
+     1v93 : Ensure that specifying too many advertising UUIDs causes an exception, not a reboot
+            nRF5x: Fix for time jump caused by reentrancy in jshGetSystemTime
+            Fix regression causing multiple end/close callbacks when using standard TCP/IP socket client/server
+            Ensure NetworkJS reports receive errors back correctly
+            nRF5x: Fix issue where connect and immediate disconnect could in some cases trigger an error from nordic's libraries that'd cause a reboot
+            Fix regression that caused Original Espruino to have lost Filesystem/hashlib/neopixel support in 1v92
+	    Re-add TV output to Original Espruino
+            Fix some stack overflow bugs on Linux found by fuzzing (#1147)
+            Remove un-needed code for parsing '.' in var statement (#1147)
+            Add autocomplete for pin names (fix #1124)
+            Add Array.indexOf fromIndex support (fix #162)
+            Puck.js: Add BluetoothRemoteGATTServer.startBonding to allow bonding to be initiated when Puck.js is a central
+            Fat FS: closedir after readdir, FS errors should be catchable (#1164), fs.statSync (#1163)
+            Allow hardware (CTS) flow control (fix #1165)
+            nRF52: Add AntiCat's patch to Nordic's NFC library to cope with malformed NFC requests
+            Puck.js: Fix increased battery drain after NFC usage (fix #1171)
+            Puck.js: Fix WS2811 output library that would output bad data after neopixel waveform (fix #1154)
+            nRF52: Seed random number generator at boot (fix #1166)
+            Stop trailing decimal point if there are no digits after it - which could cause issues in JSON
+            Don't enter debugger if we're in the middle of uploading (echo_off_for_line) (fix #644)
+            Added Date setters (fix #504)
+            Allow Timezone to be set for Date with E.setTimeZone(...) (fix #530)
+            Added RegEx lexing (part of #256)
+            Puck.js: fix error 8 from NRF.sleep during an active connection 
+            nRF5x: Fix `NRF.updateServices` when a 128 bit service shares the same 16 bit UUID
+            Add 'errors' option when using `Serial.setup` to enable error handling (and turn it off by default as it can fill the input queue)
+            nRF52: Re-initialise services and HID after a `save()` (fix #1185)
+            nRF5x: Add NRF.getAdvertisingData
+            nRF5x: Allow array of objects in NRF.setAdvertising (fix #1188)
+            Fix internal vcbprintf JSON dumping
+            nRF5x: NRF.findDevices will now throw an exception if no callback is supplied
+            nRF52: Added BluetoothRemoteGATTServer.getSecurityStatus to check the status of the link
+            nRF52: Disable auto-whitelisting by default, add with `NRF.setWhitelist` (fix #1187)
+            nRF52: Allow secure Bluetooth LE connections
+            Don't draw font characters that are off the edge of the screen
+            Make atob and btoa use flat string for larger amounts of data (faster & more memory efficient) (fix #1192)
+            nRF52: Pull in Nordic SDK13 code to crash caused by writing large characteristic (fix #1181)
+            Puck.js: Added Puck.magTemp() function to get the magnetometer's temperature as well
+            nRF5x: Fix issue where 'NRF.sleep()' called while a connection was active could cause Espruino to go into a high power draw mode
+            Fix Object.setPrototypeOf when called on undefined (fix #1194)
+            Fix dumping of an ArrayBuffer containing data (new ArrayBuffer([1,2,3]) isn't valid)
+            Fix setAdvertising regression where name would be lost after save() (fix #1193)
+            Add `E.set/getFlags` to allow interpreter state to be controlled from one place
+            Add `E.setFlags({pretokenise:1})` to dynamically turn on pretokenisation (fix #1178)
+
      1v92 : nRF5x: Fix issue where Espruino could crash during save() if the flash got into a strange state
             Added Pin.toggle() function
             Fix implicit casting to bool/number on ArrayBuffers (fix #1030)
