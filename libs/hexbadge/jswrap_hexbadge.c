@@ -14,6 +14,7 @@
  * ----------------------------------------------------------------------------
  */
 
+/* DO_NOT_INCLUDE_IN_DOCS - this is a special token for common.py */
 
 #include <jswrap_hexbadge.h>
 #include "jsinteractive.h"
@@ -65,37 +66,97 @@ const Pin LCD_MOSI = 15;
   "name" : "BTNA",
   "generate_full" : "19",
   "return" : ["pin",""]
-}*/
+}
+The pin connected to the 'A' button. Reads as `1` when pressed, `0` when not
+*/
 /*JSON{
   "type" : "variable",
   "name" : "BTNB",
   "generate_full" : "20",
   "return" : ["pin",""]
-}*/
+}
+The pin connected to the 'B' button. Reads as `1` when pressed, `0` when not
+*/
 /*JSON{
   "type" : "variable",
   "name" : "BTNU",
   "generate_full" : "31",
   "return" : ["pin",""]
-}*/
+}
+The pin connected to the up button. Reads as `1` when pressed, `0` when not
+*/
 /*JSON{
   "type" : "variable",
   "name" : "BTND",
   "generate_full" : "16",
   "return" : ["pin",""]
-}*/
+}
+The pin connected to the down button. Reads as `1` when pressed, `0` when not
+*/
 /*JSON{
   "type" : "variable",
   "name" : "BTNL",
   "generate_full" : "17",
   "return" : ["pin",""]
-}*/
+}
+The pin connected to the left button. Reads as `1` when pressed, `0` when not
+*/
 /*JSON{
   "type" : "variable",
   "name" : "BTNR",
   "generate_full" : "18",
   "return" : ["pin",""]
-}*/
+}
+The pin connected to the right button. Reads as `1` when pressed, `0` when not
+*/
+/*JSON{
+  "type" : "variable",
+  "name" : "CORNER1",
+  "generate_full" : "25",
+  "return" : ["pin",""]
+}
+The pin connected to Corner #1
+*/
+/*JSON{
+  "type" : "variable",
+  "name" : "CORNER2",
+  "generate_full" : "26",
+  "return" : ["pin",""]
+}
+The pin connected to Corner #2
+*/
+/*JSON{
+  "type" : "variable",
+  "name" : "CORNER3",
+  "generate_full" : "27",
+  "return" : ["pin",""]
+}
+The pin connected to Corner #3
+*/
+/*JSON{
+  "type" : "variable",
+  "name" : "CORNER4",
+  "generate_full" : "28",
+  "return" : ["pin",""]
+}
+The pin connected to Corner #4
+*/
+/*JSON{
+  "type" : "variable",
+  "name" : "CORNER5",
+  "generate_full" : "29",
+  "return" : ["pin",""]
+}
+The pin connected to Corner #5
+*/
+/*JSON{
+  "type" : "variable",
+  "name" : "CORNER6",
+  "generate_full" : "30",
+  "return" : ["pin",""]
+}
+The pin connected to Corner #6
+*/
 
 
 
@@ -117,7 +178,7 @@ Class containing utility functions for accessing IO on the hexagonal badge
 }
 Capacitive sense - the higher the capacitance, the higher the number returned.
 
-Supply a corner between 1 and 6, and a
+Supply a corner number between 1 and 6, and an integer value will be returned that is proportional to the capacitance
 */
 int jswrap_badge_capSense(int corner) {
   if (corner>=1 && corner<=6) {
@@ -175,6 +236,28 @@ void badge_lcd_flip(JsVar *g) {
   jsvUnLock(buf);
 }
 
+
+/*JSON{
+    "type" : "staticmethod",
+    "class" : "Badge",
+    "name" : "setContrast",
+    "generate" : "jswrap_badge_setContrast",
+    "params" : [
+      ["c","float","Contrast between 0 and 1"]
+    ]
+}
+Set the LCD's contrast */
+void jswrap_badge_setContrast(JsVarFloat c) {
+  if (c<0) c=0;
+  if (c>1) c=1;
+  jshPinSetValue(LCD_CS,0);
+  jshPinSetValue(LCD_DC,0);
+  badge_lcd_wr(0x81);
+  badge_lcd_wr((int)(63*c));
+  //badge_lcd_wr(0x20|div); div = 0..7
+  jshPinSetValue(LCD_CS,1);
+}
+
 /*JSON{
   "type" : "init",
   "generate" : "jswrap_badge_init"
@@ -201,36 +284,25 @@ void jswrap_badge_init() {
   graphicsSetVar(&gfx);
   jsvObjectSetChild(execInfo.root,"g",graphics);
   // Set initial image
+  const unsigned int LCD_IMIT_IMG_OFFSET = 344;
   const unsigned char LCD_INIT_IMG[] = {
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 128, 128, 128, 128, 192, 96, 176, 120, 60, 30, 14, 14, 12, 12, 12, 12, 12,
-      12, 12, 28, 24, 24, 24, 152, 216, 120, 216, 240, 240, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 128, 128, 128, 128, 128, 128, 0, 0, 0, 128, 128, 128, 128, 128, 128, 128, 128, 0, 240, 240,
-      208, 240, 0, 128, 128, 128, 0, 0, 128, 128, 128, 128, 128, 128, 128, 128, 128, 128, 0, 0, 128, 128, 128, 128,
-      128, 128, 128, 128, 0, 0, 128, 128, 128, 128, 128, 128, 0, 0, 112, 80, 80, 80, 80, 80, 208, 16, 240, 0, 0, 0, 0,
-      255, 253, 57, 125, 231, 255, 2, 7, 7, 6, 6, 7, 7, 7, 15, 13, 13, 13, 15, 14, 14, 30, 30, 22, 22, 9, 6, 3, 0, 255,
-      1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 62, 99, 136, 190, 195, 195, 190, 136,
-      99, 62, 254, 131, 128, 254, 3, 2, 255, 128, 255, 0, 255, 128, 128, 255, 0, 255, 128, 255, 224, 192, 191, 128, 192,
-      63, 3, 2, 7, 253, 128, 255, 8, 127, 129, 190, 98, 195, 255, 201, 0, 255, 48, 223, 142, 246, 213, 215, 186, 169,
-      103, 192, 231, 165, 165, 165, 165, 165, 189, 128, 255, 0, 0, 0, 0, 0, 1, 1, 227, 255, 255, 0, 128, 128, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 192, 224, 248, 255, 248, 56, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 7, 15, 8, 15, 0, 0, 0, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-      0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 7, 5, 7, 15, 11, 15, 15, 11, 15, 31, 30, 30, 30, 22, 30, 30, 8, 8, 12, 15,
-      11, 15, 7, 1
-
+    128, 128, 128, 128, 128, 192, 96, 176, 88, 52, 30, 14, 6, 12, 12, 12, 12, 12, 12, 12, 8, 24, 24, 24, 24, 216, 56, 
+    152, 240, 240, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 128, 128, 128, 
+    0, 0, 0, 0, 0, 128, 128, 128, 0, 0, 128, 128, 0, 0, 176, 176, 0, 0, 128, 128, 128, 0, 0, 0, 128, 128, 0, 128, 128, 0, 
+    128, 128, 0, 0, 0, 0, 128, 128, 128, 0, 128, 128, 0, 0, 0, 0, 128, 128, 128, 128, 0, 0, 0, 48, 48, 48, 48, 48, 48, 240, 
+    240, 240, 0, 0, 0, 0, 255, 129, 56, 125, 199, 255, 2, 3, 6, 6, 6, 6, 7, 7, 15, 13, 13, 13, 13, 14, 14, 30, 30, 22, 22, 
+    9, 6, 1, 0, 255, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 62, 127, 227, 193, 193, 
+    227, 127, 62, 0, 0, 255, 255, 3, 1, 1, 255, 255, 255, 0, 0, 255, 255, 0, 0, 255, 255, 127, 192, 192, 192, 255, 127, 0, 
+    1, 1, 3, 255, 255, 0, 0, 62, 127, 227, 193, 193, 99, 255, 255, 0, 0, 114, 251, 217, 217, 205, 207, 103, 0, 0, 192, 198, 
+    198, 198, 198, 198, 255, 255, 255, 0, 0, 0, 0, 0, 1, 1, 226, 255, 255, 0, 128, 128, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+    0, 0, 0, 0, 0, 192, 224, 248, 255, 120, 56, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 
+    0, 0, 0, 0, 0, 7, 7, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 7, 5, 7, 
+    15, 11, 15, 15, 11, 15, 31, 22, 30, 30, 22, 30, 30, 8, 8, 12, 15, 11, 15, 3, 1
   };
   JsVar *buf = jsvObjectGetChild(graphics,"buffer",0);
   JSV_GET_AS_CHAR_ARRAY(bPtr, bLen, buf);
-  if (bPtr) memcpy(bPtr, LCD_INIT_IMG, sizeof(LCD_INIT_IMG));
+  if (bPtr) memcpy(&bPtr[LCD_IMIT_IMG_OFFSET], LCD_INIT_IMG, sizeof(LCD_INIT_IMG));
   jsvUnLock(buf);
   // Create 'flip' fn
   JsVar *fn = jsvNewNativeFunction((void (*)(void))badge_lcd_flip, JSWAT_VOID|JSWAT_THIS_ARG);
@@ -238,17 +310,19 @@ void jswrap_badge_init() {
   // LCD init 2
   jshDelayMicroseconds(10000);
   jshPinSetValue(LCD_RST,1);
+  jshDelayMicroseconds(10000);
   const unsigned char LCD_INIT_DATA[] = {
-       0xE2,
-       0xA3,
-       0xA1,
-       0xC8,
-       0x25,
-       0x81,
+       // 0xE2,   // soft reset
+       0xA3,   // bias 1/7
+       0xC8,   // reverse scan dir
+       0x25,   // regulation resistor ratio (0..7)
+       0x81,   // contrast control
        0x17,
-       0x2F,
-       0xAF
+       0x2F,   // control power circuits - last 3 bits = VB/VR/VF
+       0xA1,   // start at column 0
+       0xAF    // disp on
   };
+  // TODO: start at column 128 (0xA0) and don't 'flip' the LCD
   for (unsigned int i=0;i<sizeof(LCD_INIT_DATA);i++)
     badge_lcd_wr(LCD_INIT_DATA[i]);
   jshPinSetValue(LCD_CS,1);

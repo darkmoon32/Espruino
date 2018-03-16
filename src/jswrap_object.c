@@ -142,7 +142,7 @@ JsVar *jswrap_object_toString(JsVar *parent, JsVar *arg0) {
 Copy this object completely
  */
 JsVar *jswrap_object_clone(JsVar *parent) {
-  return jsvCopy(parent);
+  return jsvCopy(parent, true);
 }
 
 /*JSON{
@@ -209,7 +209,7 @@ void jswrap_object_keys_or_property_names_cb(
     JsvIsInternalChecker checkerFunction = jsvGetInternalFunctionCheckerFor(obj);
 
     JsvIterator it;
-    jsvIteratorNew(&it, obj);
+    jsvIteratorNew(&it, obj, JSIF_DEFINED_ARRAY_ElEMENTS);
     while (jsvIteratorHasElement(&it)) {
       JsVar *key = jsvIteratorGetKey(&it);
       if (!(checkerFunction && checkerFunction(key)) || (jsvIsStringEqual(key, JSPARSE_CONSTRUCTOR_VAR))) {
@@ -451,11 +451,8 @@ JsVar *jswrap_object_defineProperty(JsVar *parent, JsVar *propName, JsVar *desc)
 
   JsVar *name = jsvAsArrayIndex(propName);
   JsVar *value = jsvObjectGetChild(desc, "value", 0);
-  JsVar *property = jsvFindChildFromVar(parent, name, true);
-  jsvUnLock(name);
-  if (property && value)
-    jsvSetValueOfName(property, value);
-  jsvUnLock2(property, value);
+  jsvObjectSetChildVar(parent, name, value);
+  jsvUnLock2(name, value);
 
   return jsvLockAgain(parent);
 }
@@ -536,6 +533,46 @@ JsVar *jswrap_object_setPrototypeOf(JsVar *object, JsVar *proto) {
   }
   jsvUnLock(v);
   return jsvLockAgainSafe(object);
+}
+
+/*JSON{
+  "type" : "staticmethod",
+  "class" : "Object",
+  "name" : "assign",
+  "generate" : "jswrap_object_assign",
+  "params" : [
+    ["args","JsVarArray","The target object, then any items objects to use as sources of keys"]
+  ],
+  "return" : ["JsVar","The target object"]
+}
+Appends all keys and values in any subsequent objects to the first object
+
+**Note:** Unlike the standard ES6 `Object.assign`, this will throw an exception
+if given raw strings, bools or numbers rather than objects.
+ */
+JsVar *jswrap_object_assign(JsVar *args) {
+  JsVar *result = 0;
+
+  JsvObjectIterator argsIt;
+  jsvObjectIteratorNew(&argsIt, args);
+  bool error = false;
+  while (!error && jsvObjectIteratorHasValue(&argsIt)) {
+    JsVar *arg = jsvObjectIteratorGetValue(&argsIt);
+    if (jsvIsUndefined(arg) || jsvIsNull(arg)) {
+      // ignore
+    } else if (!jsvIsObject(arg)) {
+      jsExceptionHere(JSET_TYPEERROR, "Expecting Object, got %t\n", arg);
+      error = true;
+    } else if (!result) {
+      result = jsvLockAgain(arg);
+    } else {
+      jsvObjectAppendAll(result, arg);
+    }
+    jsvUnLock(arg);
+    jsvObjectIteratorNext(&argsIt);
+  };
+  jsvObjectIteratorFree(&argsIt);
+  return result;
 }
 
 // --------------------------------------------------------------------------
@@ -800,7 +837,8 @@ void jswrap_object_removeAllListeners_cstr(JsVar *parent, const char *event) {
     ["newFunc","JsVar","The new function to replace this function with"]
   ]
 }
-This replaces the function with the one in the argument - while keeping the old function's scope. This allows inner functions to be edited, and is used when edit() is called on an inner function.
+This replaces the function with the one in the argument - while keeping the old function's scope.
+This allows inner functions to be edited, and is used when edit() is called on an inner function.
  */
 void jswrap_function_replaceWith(JsVar *oldFunc, JsVar *newFunc) {
   if (!jsvIsFunction(newFunc)) {
@@ -822,8 +860,9 @@ void jswrap_function_replaceWith(JsVar *oldFunc, JsVar *newFunc) {
       oldFunc->flags = (oldFunc->flags&~JSV_VARTYPEMASK) |JSV_FUNCTION;
   }
 
-  // Grab scope - the one thing we want to keep
+  // Grab scope and prototype - the things we want to keep
   JsVar *scope = jsvFindChildFromString(oldFunc, JSPARSE_FUNCTION_SCOPE_NAME, false);
+  JsVar *prototype = jsvFindChildFromString(oldFunc, JSPARSE_PROTOTYPE_VAR, false);
   // so now remove all existing entries
   jsvRemoveAllChildren(oldFunc);
   // now re-add scope
@@ -835,8 +874,9 @@ void jswrap_function_replaceWith(JsVar *oldFunc, JsVar *newFunc) {
   while (jsvObjectIteratorHasValue(&it)) {
     JsVar *el = jsvObjectIteratorGetKey(&it);
     jsvObjectIteratorNext(&it);
-    if (!jsvIsStringEqual(el, JSPARSE_FUNCTION_SCOPE_NAME)) {
-      JsVar *copy = jsvCopy(el);
+    if (!jsvIsStringEqual(el, JSPARSE_FUNCTION_SCOPE_NAME) &&
+        !jsvIsStringEqual(el, JSPARSE_PROTOTYPE_VAR)) {
+      JsVar *copy = jsvCopy(el, true);
       if (copy) {
         jsvAddName(oldFunc, copy);
         jsvUnLock(copy);
@@ -845,7 +885,9 @@ void jswrap_function_replaceWith(JsVar *oldFunc, JsVar *newFunc) {
     jsvUnLock(el);
   }
   jsvObjectIteratorFree(&it);
-
+  // re-add prototype (it needs to come after other hidden vars)
+  if (prototype) jsvAddName(oldFunc, prototype);
+  jsvUnLock(prototype);
 }
 
 /*JSON{
@@ -892,7 +934,7 @@ JsVar *jswrap_function_apply_or_call(JsVar *parent, JsVar *thisArg, JsVar *argsA
     for (i=0;i<argC;i++) args[i] = 0;
     // TODO: Use jsvGetArrayItems?
     JsvIterator it;
-    jsvIteratorNew(&it, argsArray);
+    jsvIteratorNew(&it, argsArray, JSIF_EVERY_ARRAY_ELEMENT);
     while (jsvIteratorHasElement(&it)) {
       JsVarInt idx = jsvGetIntegerAndUnLock(jsvIteratorGetKey(&it));
       if (idx>=0 && idx<(int)argC) {
@@ -946,7 +988,7 @@ JsVar *jswrap_function_bind(JsVar *parent, JsVar *thisArg, JsVar *argsArray) {
     JsVar *defaultValue = jsvObjectIteratorGetValue(&fnIt);
     bool wasBound = jsvIsFunctionParameter(param) && defaultValue;
     if (wasBound) {
-      JsVar *newParam = jsvCopy(param);
+      JsVar *newParam = jsvCopy(param, true);
       if (newParam) { // could be out of memory
         jsvAddName(fn, newParam);
         jsvUnLock(newParam);

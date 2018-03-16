@@ -15,12 +15,12 @@
 #ifndef JSPIN_H
 #define JSPIN_H
 
+typedef unsigned char Pin; ///< for specifying pins for hardware
+#define PIN_UNDEFINED ((Pin)0xFF)
+
 #include "jsutils.h"
 #include "jsvar.h"
 #include "jsdevices.h"
-
-typedef unsigned char Pin; ///< for specifying pins for hardware
-#define PIN_UNDEFINED ((Pin)0xFF)
 
 typedef enum {
   JSH_PORT_NONE,
@@ -32,6 +32,10 @@ typedef enum {
   JSH_PORTF,
   JSH_PORTG,
   JSH_PORTH,
+  JSH_PORTI,
+  JSH_PORTV,
+  JSH_PORT_MASK = 15,
+  JSH_PIN_NEGATED = 16
 } PACKED_FLAGS JsvPinInfoPort;
 
 typedef enum {
@@ -142,7 +146,8 @@ typedef enum {
   JSH_I2C1     = 0x0280,
   JSH_I2C2     = 0x0290,
   JSH_I2C3     = 0x02A0,
-  JSH_I2CMAX   = JSH_I2C3,
+  JSH_I2C4     = 0x02B0,
+  JSH_I2CMAX   = JSH_I2C4,
   JSH_USART1   = 0x0300,
   JSH_USART2   = 0x0310,
   JSH_USART3   = 0x0320,

@@ -58,13 +58,30 @@ void jswrap_wio_lte_led(int r, int g, int b) {
     "name" : "setGrovePower",
     "generate" : "jswrap_wio_lte_setGrovePower",
     "params" : [
-      ["onoff","bool","Whether to turn the Grove connectors power on or off (D38 is always powered)"]
+      ["onoff","bool","Whether to turn the Grove connectors power on or off (D38/D39 are always powered)"]
     ]
 }
-Set the WIO's LED
+Set the power of Grove connectors, except for `D38` and `D39` which are always on.
 */
 void jswrap_wio_lte_setGrovePower(bool pwr) {
   jshPinOutput(JSH_PORTB_OFFSET+10, pwr);
+}
+
+/*JSON{
+    "type" : "staticmethod",
+    "class" : "WioLTE",
+    "name" : "setLEDPower",
+    "generate" : "jswrap_wio_lte_setLEDPower",
+    "params" : [
+      ["onoff","bool","true = on, false = off"]
+    ]
+}
+Turn power to the WIO's LED on or off.
+
+Turning the LED on won't immediately display a color - that must be done with `WioLTE.LED(r,g,b)`
+*/
+void jswrap_wio_lte_setLEDPower(bool pwr) {
+  jshPinOutput(JSH_PORTA_OFFSET+8, pwr);
 }
 
 /*JSON{
@@ -122,6 +139,13 @@ void jswrap_wio_lte_setGrovePower(bool pwr) {
   "generate" : "jswrap_wio_lte_init"
 }*/
 void jswrap_wio_lte_init() {
-  // initialise the SD card
-  jsvUnLock(jspEvaluate("(function(){digitalWrite(A15,1);var spi=new SPI();spi.setup({mosi:D2,miso:C8,sck:C12});E.connectSDCard(spi,C11);})();",true));
+  /* initialise the SD card
+   C8   D0  MISO
+   C9   D1  unused
+   C10  D2  unused
+   C11  D3  CS
+   C12  CK  SCK
+   D2  CMD  MOSI
+   */
+  jsvUnLock(jspEvaluate("(function(){digitalWrite([C9,C10],0);var spi=new SPI();spi.setup({mosi:D2,miso:C8,sck:C12});pinMode(C8,\"input_pullup\");digitalWrite(A15,1);E.connectSDCard(spi,C11);})();",true));
 }

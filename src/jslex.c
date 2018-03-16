@@ -317,19 +317,19 @@ static void jslLexRegex() {
     lex->tk++; // +1 gets you to 'unfinished X'
   } else {
     jsvStringIteratorAppend(&it, '/');
+    jslGetNextCh();
     // regex modifiers
-    if (lex->tk=='g' ||
-        lex->tk=='i' ||
-        lex->tk=='m' ||
-        lex->tk=='y' ||
-        lex->tk=='u') {
+    while (lex->currCh=='g' ||
+        lex->currCh=='i' ||
+        lex->currCh=='m' ||
+        lex->currCh=='y' ||
+        lex->currCh=='u') {
       jslTokenAppendChar(lex->currCh);
       jsvStringIteratorAppend(&it, lex->currCh);
       jslGetNextCh();
     }
   }
   jsvStringIteratorFree(&it);
-  jslGetNextCh();
 }
 
 void jslGetNextToken() {
@@ -347,6 +347,8 @@ void jslGetNextToken() {
     }
     // block comments
     if (jslNextCh()=='*') {
+      jslGetNextCh();
+      jslGetNextCh();
       while (lex->currCh && !(lex->currCh=='*' && jslNextCh()=='/'))
         jslGetNextCh();
       if (!lex->currCh) {
@@ -391,6 +393,7 @@ void jslGetNextToken() {
       break;
       case 'c': if (jslIsToken("case", 1)) lex->tk = LEX_R_CASE;
       else if (jslIsToken("catch", 1)) lex->tk = LEX_R_CATCH;
+      else if (jslIsToken("class", 1)) lex->tk = LEX_R_CLASS;
       else if (jslIsToken("const", 1)) lex->tk = LEX_R_CONST;
       else if (jslIsToken("continue", 1)) lex->tk = LEX_R_CONTINUE;
       break;
@@ -400,6 +403,7 @@ void jslGetNextToken() {
       else if (jslIsToken("debugger", 1)) lex->tk = LEX_R_DEBUGGER;
       break;
       case 'e': if (jslIsToken("else", 1)) lex->tk = LEX_R_ELSE;
+      else if (jslIsToken("extends", 1)) lex->tk = LEX_R_EXTENDS;
       break;
       case 'f': if (jslIsToken("false", 1)) lex->tk = LEX_R_FALSE;
       else if (jslIsToken("finally", 1)) lex->tk = LEX_R_FINALLY;
@@ -417,7 +421,9 @@ void jslGetNextToken() {
       break;
       case 'r': if (jslIsToken("return", 1)) lex->tk = LEX_R_RETURN;
       break;
-      case 's': if (jslIsToken("switch", 1)) lex->tk = LEX_R_SWITCH;
+      case 's': if (jslIsToken("static", 1)) lex->tk = LEX_R_STATIC;
+      else if (jslIsToken("super", 1)) lex->tk = LEX_R_SUPER;
+      else if (jslIsToken("switch", 1)) lex->tk = LEX_R_SWITCH;
       break;
       case 't': if (jslIsToken("this", 1)) lex->tk = LEX_R_THIS;
       else if (jslIsToken("throw", 1)) lex->tk = LEX_R_THROW;
@@ -692,6 +698,20 @@ void jslReset() {
   jslSeekTo(0);
 }
 
+
+
+/** When printing out a function, with pretokenise a
+ * character could end up being a special token. This
+ * handles that case. */
+void jslFunctionCharAsString(unsigned char ch, char *str, size_t len) {
+  if (ch >= LEX_TOKEN_START) {
+    jslTokenAsString(ch, str, len);
+  } else {
+    str[0] = (char)ch;
+    str[1] = 0;
+  }
+}
+
 void jslTokenAsString(int token, char *str, size_t len) {
   // see JS_ERROR_TOKEN_BUF_SIZE
   if (token>32 && token<128) {
@@ -776,6 +796,10 @@ void jslTokenAsString(int token, char *str, size_t len) {
         /*LEX_R_TYPEOF :   */ "typeof\0"
         /*LEX_R_VOID :     */ "void\0"
         /*LEX_R_DEBUGGER : */ "debugger\0"
+        /*LEX_R_CLASS :    */ "class\0"
+        /*LEX_R_EXTENDS :  */ "extends\0"
+        /*LEX_R_SUPER :  */   "super\0"
+        /*LEX_R_STATIC :   */ "static\0"
         ;
     unsigned int p = 0;
     int n = token-_LEX_OPERATOR_START;
@@ -884,7 +908,7 @@ JsVar *jslNewTokenisedStringFromLexer(JslCharPos *charFrom, size_t charTo) {
   }
 
   // Try and create a flat string first
-  JsVar *var = jsvNewStringOfLength((unsigned int)length);
+  JsVar *var = jsvNewStringOfLength((unsigned int)length, NULL);
   if (var) { // out of memory
     JsvStringIterator dstit;
     jsvStringIteratorNew(&dstit, var, 0);
@@ -986,6 +1010,13 @@ unsigned int jslGetLineNumber() {
   return (unsigned int)line;
 }
 
+/// Do we need a space between these two characters when printing a function's text?
+bool jslNeedSpaceBetween(unsigned char lastch, unsigned char ch) {
+  return (lastch>=_LEX_R_LIST_START || ch>=_LEX_R_LIST_START) &&
+         (lastch>=_LEX_R_LIST_START || isAlpha((char)lastch) || isNumeric((char)lastch)) &&
+         (ch>=_LEX_R_LIST_START || isAlpha((char)ch) || isNumeric((char)ch));
+}
+
 void jslPrintPosition(vcbprintf_callback user_callback, void *user_data, size_t tokenPos) {
   size_t line,col;
   jsvGetLineAndCol(lex->sourceVar, tokenPos, &line, &col);
@@ -1017,18 +1048,25 @@ void jslPrintTokenLineMarker(vcbprintf_callback user_callback, void *user_data, 
     lineLength -= skipChars;
   }
 
-  // print the string until the end of the line, or 60 chars (whichever is lesS)
+  // print the string until the end of the line, or 60 chars (whichever is less)
   int chars = 0;
   JsvStringIterator it;
   jsvStringIteratorNew(&it, lex->sourceVar, startOfLine);
+  unsigned char lastch = 0;
   while (jsvStringIteratorHasChar(&it) && chars<60) {
-    char ch = jsvStringIteratorGetChar(&it);
+    unsigned char ch = (unsigned char)jsvStringIteratorGetChar(&it);
     if (ch == '\n') break;
-    char buf[2];
-    buf[0] = ch;
-    buf[1] = 0;
+    if (jslNeedSpaceBetween(lastch, ch)) {
+      col++;
+      user_callback(" ", user_data);
+    }
+    char buf[32];
+    jslFunctionCharAsString(ch, buf, sizeof(buf));
+    size_t len = strlen(buf);
+    col += len-1;
     user_callback(buf, user_data);
     chars++;
+    lastch = ch;
     jsvStringIteratorNext(&it);
   }
   jsvStringIteratorFree(&it);

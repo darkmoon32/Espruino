@@ -553,9 +553,12 @@ JsVarFloat jshGetMillisecondsFromTime(JsSysTime time) {
 /**
  * Return the current time in microseconds.
  */
+static portMUX_TYPE JSmicrosMux = portMUX_INITIALIZER_UNLOCKED;
 JsSysTime CALLED_FROM_INTERRUPT jshGetSystemTime() { // in us -- can be called at interrupt time
   struct timeval tm;
+  portENTER_CRITICAL_ISR(&JSmicrosMux);
   gettimeofday(&tm, 0);
+  portEXIT_CRITICAL_ISR(&JSmicrosMux);
   return (JsSysTime)(tm.tv_sec)*1000000L + tm.tv_usec;
 }
 
@@ -712,6 +715,19 @@ void jshFlashErasePage(
     uint32_t addr //!<
   ) {
   spi_flash_erase_sector(addr >> FLASH_PAGE_SHIFT);
+}
+
+size_t jshFlashGetMemMapAddress(size_t ptr) {
+   // if ptr is high already, assume we know what we're accessing
+  if (ptr > 0x10000000) return ptr;
+  // romdata_jscode is memory mapped address from the js_code partition in rom - targets/esp32/main.c
+  extern char* romdata_jscode;
+  if (romdata_jscode==0) {
+    jsError("Couldn't find js_code partition - update with partition_espruino.bin\n");
+    return 0;
+  }
+  // Flash memory access is offset to 0, so remove starting location as already accounted for
+  return &romdata_jscode[ptr - 0x100000 ];
 }
 
 unsigned int jshSetSystemClock(JsVar *options) {

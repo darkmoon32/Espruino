@@ -31,6 +31,7 @@ info = {
    ],
    'makefile' : [
      'DEFINES+=-DUSE_USB_OTG_FS=1',
+     'DEFINES+=-DPIN_NAMES_DIRECT=1', # Package skips out some pins, so we can't assume each port starts from 0
      'DEFINES+=-DWIO_LTE',
      'USE_DFU=1',
      'STLIB=STM32F405xx',
@@ -92,8 +93,8 @@ board = {
 };
 board["_css"] = """
 #board {
-  width: 450px;
-  height: 468px;
+  width: 457px;
+  height: 480px;
   left: 200px;
   background-image: url(img/WIO_LTE.jpg);
 }
@@ -101,15 +102,15 @@ board["_css"] = """
   height: 468px;
 }
 #left {
-  top: 129px;
-  right: 336px;
+  top: 98px;
+  right: 352px;
 }
 #right  {
-  top: 129px;
-  left: 336px;
+  top: 98px;
+  left: 352px;
 }
-.leftpin { height: 16px; }
-.rightpin { height: 16px; }
+.leftpin { height: 18px; padding:0px; }
+.rightpin { height: 18px; padding:0px; }
 """;
 
 def get_pins():

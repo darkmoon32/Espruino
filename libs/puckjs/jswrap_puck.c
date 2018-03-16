@@ -26,6 +26,7 @@
 #include "nrf_gpio.h"
 #include "nrf_delay.h"
 #include "nrf5x_utils.h"
+#include "jsflash.h" // for jsfRemoveCodeFromFlash
 
 #define MAG_PWR 18
 #define MAG_INT 17
@@ -442,7 +443,7 @@ void jswrap_puck_IR(JsVar *data, Pin cathode, Pin anode) {
   jshPinSetValue(anode, pulsePolarity);
 
   JsvIterator it;
-  jsvIteratorNew(&it, data);
+  jsvIteratorNew(&it, data, JSIF_EVERY_ARRAY_ELEMENT);
   while (jsvIteratorHasElement(&it)) {
     JsVarFloat pulseTime = jsvIteratorGetFloatValue(&it);
     if (hasPulses) jstPinOutputAtTime(time, &anode, 1, pulsePolarity);
@@ -743,6 +744,10 @@ void jswrap_puck_init() {
       nrf_delay_ms(500);
     }
     jshPinInput(indicator);
+    // If the button is *still* pressed, remove all code from flash memory too!
+    if (jshPinGetValue(BTN1_PININDEX) == BTN1_ONSTATE) {
+      jsfRemoveCodeFromFlash();
+    }
   }
 }
 
