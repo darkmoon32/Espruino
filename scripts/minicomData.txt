@@ -1,0 +1,6 @@
+send 
+send "E.setBootCode(\"var startupLed = false;if(digitalRead(BTN2)){Serial6.setConsole();setInterval(function(){startupLed = !startupLed;digitalWrite(RED5,startupLed);},500);}else{digitalWrite(RED5,1);}\",true);"
+expect {
+ "=undefined" break
+}
+! killall minicom
