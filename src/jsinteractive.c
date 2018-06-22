@@ -78,7 +78,7 @@ InputState inputState = 0; ///< state for dealing with cursor keys
 uint16_t inputStateNumber; ///< Number from when `Esc [ 1234` is sent - for storing line number
 uint16_t jsiLineNumberOffset; ///< When we execute code, this is the 'offset' we apply to line numbers in error/debug
 bool hasUsedHistory = false; ///< Used to speed up - if we were cycling through history and then edit, we need to copy the string
-unsigned char loopsIdling; ///< How many times around the loop have we been entirely idle?
+unsigned char loopsIdling = 0; ///< How many times around the loop have we been entirely idle?
 bool interruptedDuringEvent; ///< Were we interrupted while executing an event? If so may want to clear timers
 JsErrorFlags lastJsErrorFlags = 0; ///< Compare with jsErrorFlags in order to report errors
 // ----------------------------------------------------------------------------
@@ -283,56 +283,9 @@ void jsiConsolePrintStringVar(JsVar *v) {
   jsiConsolePrintStringVarWithNewLineChar(v,0,0);
 }
 
-/** Assuming that we are at the end of the string, this backs up
- * and deletes it */
-void jsiConsoleEraseStringVarBackwards(JsVar *v) {
-  assert(jsvHasCharacterData(v));
-
-  size_t line, lines = jsvGetLinesInString(v);
-  for (line=lines;line>0;line--) {
-    size_t i,chars = jsvGetCharsOnLine(v, line);
-    if (line==lines) {
-      for (i=0;i<chars;i++) jsiConsolePrintChar(0x08); // move cursor back
-    }
-    for (i=0;i<chars;i++) jsiConsolePrintChar(' '); // move cursor forwards and wipe out
-    for (i=0;i<chars;i++) jsiConsolePrintChar(0x08); // move cursor back
-    if (line>1) {
-      // clear the character before - this would have had a colon
-      jsiConsolePrint("\x08 ");
-      // move cursor up
-      jsiConsolePrint("\x1B[A"); // 27,91,65 - up
-    }
-  }
-}
-
-/** Assuming that we are at fromCharacter position in the string var,
- * erase everything that comes AFTER and return the cursor to 'fromCharacter'
- * On newlines, if erasePrevCharacter, we remove the character before too. */
-void jsiConsoleEraseStringVarFrom(JsVar *v, size_t fromCharacter, bool erasePrevCharacter) {
-  assert(jsvHasCharacterData(v));
-  size_t cursorLine, cursorCol;
-  jsvGetLineAndCol(v, fromCharacter, &cursorLine, &cursorCol);
-  // delete contents of current line
-  size_t i, chars = jsvGetCharsOnLine(v, cursorLine);
-  for (i=cursorCol;i<=chars;i++) jsiConsolePrintChar(' ');
-  for (i=0;i<chars;i++) jsiConsolePrintChar(0x08); // move cursor back
-
-  size_t line, lines = jsvGetLinesInString(v);
-  for (line=cursorLine+1;line<=lines;line++) {
-    jsiConsolePrint("\x1B[B"); // move down
-    chars = jsvGetCharsOnLine(v, line);
-    for (i=0;i<chars;i++) jsiConsolePrintChar(' '); // move cursor forwards and wipe out
-    for (i=0;i<chars;i++) jsiConsolePrintChar(0x08); // move cursor back
-    if (erasePrevCharacter) {
-      jsiConsolePrint("\x08 "); // move cursor back and insert space
-    }
-  }
-  // move the cursor back up
-  for (line=cursorLine+1;line<=lines;line++)
-    jsiConsolePrint("\x1B[A"); // 27,91,65 - up
-  // move the cursor forwards
-  for (i=1;i<cursorCol;i++)
-    jsiConsolePrint("\x1B[C"); // 27,91,67 - right
+/** Erase everything from the cursor position onwards */
+void jsiConsoleEraseAfterCursor() {
+  jsiConsolePrint("\x1B[J"); // 27,91,74 - delete all to right and down
 }
 
 void jsiMoveCursor(size_t oldX, size_t oldY, size_t newX, size_t newY) {
@@ -370,9 +323,9 @@ void jsiConsoleRemoveInputLine() {
   if (!inputLineRemoved) {
     inputLineRemoved = true;
     if (jsiEcho() && inputLine) { // intentionally not using jsiShowInputLine()
-      jsiMoveCursorChar(inputLine, inputCursorPos, 0);
-      jsiConsoleEraseStringVarFrom(inputLine, 0, true);
-      jsiConsolePrintChar(0x08); // go back to start of line
+      jsiMoveCursorChar(inputLine, inputCursorPos, 0); // move cursor to start of line
+      jsiConsolePrintChar('\r'); // go propery to start of line - past '>'
+      jsiConsoleEraseAfterCursor(); // delete all to right and down
 #ifdef USE_DEBUGGER
       if (jsiStatus & JSIS_IN_DEBUGGER) {
         jsiConsolePrintChar(0x08); // d
@@ -410,6 +363,10 @@ void jsiConsoleReturnInputLine() {
  * the user's terminal.
  */
 void jsiClearInputLine(bool updateConsole) {
+  // input line already empty - don't do anything
+  if (jsvIsEmptyString(inputLine))
+    return;
+  // otherwise...
   if (updateConsole)
     jsiConsoleRemoveInputLine();
   // clear input line
@@ -835,7 +792,7 @@ void jsiSemiInit(bool autoLoad) {
           "|   __|_ -| . |  _| | | |   | . |\n"
           "|_____|___|  _|_| |___|_|_|_|___|\n"
           "          |_| http://espruino.com\n"
-          " "JS_VERSION" Copyright 2016 G.Williams\n"
+          " "JS_VERSION" Copyright 2017 G.Williams\n"
         // Point out about donations - but don't bug people
         // who bought boards that helped Espruino
 #if !defined(PICO) && !defined(ESPRUINOBOARD) && !defined(ESPRUINOWIFI) && !defined(PUCKJS)
@@ -992,8 +949,8 @@ bool jsiIsInHistory(JsVar *line) {
 void jsiReplaceInputLine(JsVar *newLine) {
   if (jsiShowInputLine()) {
     size_t oldLen =  jsvGetStringLength(inputLine);
-    jsiMoveCursorChar(inputLine, inputCursorPos, oldLen); // move cursor to end
-    jsiConsoleEraseStringVarBackwards(inputLine);
+    jsiMoveCursorChar(inputLine, inputCursorPos, 0); // move cursor to start
+    jsiConsoleEraseAfterCursor(); // delete all to right and down
     jsiConsolePrintStringVarWithNewLineChar(newLine,0,':');
   }
   jsiInputLineCursorMoved();
@@ -1013,7 +970,8 @@ void jsiChangeToHistory(bool previous) {
     hasUsedHistory = true;
   } else if (!previous) { // if next, but we have something, just clear the line
     if (jsiShowInputLine()) {
-      jsiConsoleEraseStringVarBackwards(inputLine);
+      jsiMoveCursorChar(inputLine, inputCursorPos, 0); // move cursor to start
+      jsiConsoleEraseAfterCursor(); // delete all to right and down
     }
     jsiInputLineCursorMoved();
     jsvUnLock(inputLine);
@@ -1028,7 +986,7 @@ void jsiIsAboutToEditInputLine() {
   if (hasUsedHistory) {
     hasUsedHistory = false;
     if (jsiIsInHistory(inputLine)) {
-      JsVar *newLine = jsvCopy(inputLine);
+      JsVar *newLine = jsvCopy(inputLine, false);
       if (newLine) { // could have been out of memory!
         jsiInputLineCursorMoved();
         jsvUnLock(inputLine);
@@ -1047,7 +1005,7 @@ void jsiHandleDelete(bool isBackspace) {
       (!isBackspace && jsvGetCharInString(inputLine,inputCursorPos)=='\n');
   // If we mod this to keep the string, use jsiIsAboutToEditInputLine
   if (deleteNewline && jsiShowInputLine()) {
-    jsiConsoleEraseStringVarFrom(inputLine, inputCursorPos, true/*before newline*/); // erase all in front
+    jsiConsoleEraseAfterCursor(); // erase all in front
     if (isBackspace) {
       // delete newline char
       jsiConsolePrint("\x08 "); // delete and then send space
@@ -1138,6 +1096,12 @@ bool jsiAtEndOfInputLine() {
 }
 
 void jsiCheckErrors() {
+  if (interruptedDuringEvent) {
+    jspSetInterrupted(false);
+    interruptedDuringEvent = false;
+    jsiConsoleRemoveInputLine();
+    jsiConsolePrint("Execution Interrupted during event processing.\n");
+  }
   JsVar *exception = jspGetException();
   if (exception) {
     JsVar *process = jsvObjectGetChild(execInfo.root, "process", 0);
@@ -1152,6 +1116,7 @@ void jsiCheckErrors() {
     }
   }
   if (exception) {
+    jsiConsoleRemoveInputLine();
     jsiConsolePrintf("Uncaught %v\n", exception);
     if (jsvIsObject(exception)) {
       JsVar *stackTrace = jsvObjectGetChild(exception, "stack", 0);
@@ -1175,6 +1140,27 @@ void jsiCheckErrors() {
   if (stackTrace) {
     jsiConsolePrintStringVar(stackTrace);
     jsvUnLock(stackTrace);
+  }
+  if (lastJsErrorFlags != jsErrorFlags) {
+    JsErrorFlags newErrors = jsErrorFlags & ~lastJsErrorFlags;
+    if (newErrors & ~JSERR_WARNINGS_MASK) {
+      JsVar *v = jswrap_espruino_getErrorFlagArray(newErrors);
+      JsVar *E = jsvObjectGetChild(execInfo.root, "E", 0);
+      if (E) {
+        JsVar *callback = jsvObjectGetChild(E, JS_EVENT_PREFIX"errorFlag", 0);
+        if (callback) {
+          jsiExecuteEventCallback(0, callback, 1, &v);
+          jsvUnLock(callback);
+        }
+        jsvUnLock(E);
+      }
+      if (v) {
+        jsiConsoleRemoveInputLine();
+        jsiConsolePrintf("New interpreter error: %v\n", v);
+        jsvUnLock(v);
+      }
+    }
+    lastJsErrorFlags = jsErrorFlags;
   }
 }
 
@@ -1289,7 +1275,7 @@ void jsiTabComplete() {
     if (actualPartialLen > data.partialLen) {
       // we had a token but were past the end of it when asked
       // to autocomplete ---> no token
-      jsvUnLock(data.partial);
+      jsvUnLock2(object, data.partial);
       return;
     } else if (actualPartialLen < data.partialLen) {
       JsVar *v = jsvNewFromStringVar(data.partial, 0, actualPartialLen);
@@ -1343,7 +1329,7 @@ void jsiTabComplete() {
     // Return the input line
     jsiConsoleReturnInputLine();
   }
-  jsvUnLock(object);
+  jsvUnLock2(object, data.partial);
   // apply the completion
   if (data.possible) {
     char buf[JSLEX_MAX_TOKEN_LENGTH];
@@ -1402,7 +1388,7 @@ void jsiHandleNewLine(bool execute) {
     }
   } else { // new line - but not at end of line!
     jsiIsAboutToEditInputLine();
-    if (jsiShowInputLine()) jsiConsoleEraseStringVarFrom(inputLine, inputCursorPos, false/*no need to erase the char before*/); // erase all in front
+    if (jsiShowInputLine()) jsiConsoleEraseAfterCursor(); // erase all in front
     JsVar *v = jsvNewFromEmptyString();
     if (inputCursorPos>0) jsvAppendStringVar(v, inputLine, 0, inputCursorPos);
     jsvAppendCharacter(v, '\n');
@@ -1478,6 +1464,7 @@ void jsiHandleChar(char ch) {
     inputState = IS_NONE; // ignore 0 - it's scary
   } else if (ch == 1) { // Ctrl-a
     jsiHandleHome();
+    // Ctrl-C (char code 3) gets handled in an IRQ
   } else if (ch == 4) { // Ctrl-d
     jsiHandleDelete(false/*not backspace*/);
   } else if (ch == 5) { // Ctrl-e
@@ -1536,7 +1523,7 @@ void jsiHandleChar(char ch) {
         jsiHandleMoveUpDown(1);
     } else if (ch == 70) jsiHandleEnd();
     else if (ch == 72) jsiHandleHome();
-    else jsiConsolePrintf("[%d:%d]\n", inputState, ch);
+    //else jsiConsolePrintf("[%d:%d]\n", inputState, ch); // debugging unknown escape sequence
   } else if (inputState==IS_HAD_27_91_NUMBER) {
     if (ch>='0' && ch<='9') {
       inputStateNumber = (uint16_t)(10*inputStateNumber + ch - '0');
@@ -2071,23 +2058,6 @@ void jsiIdle() {
   if (!jspIsInterrupted()) {
     jsiExecuteEvents();
   }
-  if (interruptedDuringEvent) {
-    jspSetInterrupted(false);
-    interruptedDuringEvent = false;
-    jsiConsoleRemoveInputLine();
-    jsiConsolePrint("Execution Interrupted during event processing.\n");
-  }
-  if (lastJsErrorFlags != jsErrorFlags) {
-    JsErrorFlags newErrors = jsErrorFlags & ~lastJsErrorFlags;
-    if (newErrors) {
-      JsVar *v = jswrap_espruino_getErrorFlagArray(newErrors);
-      if (v) {
-        jsiConsolePrintf("New interpreter error: %v\n", v);
-        jsvUnLock(v);
-      }
-    }
-    lastJsErrorFlags = jsErrorFlags;
-  }
 
   // check for TODOs
   if (jsiStatus&JSIS_TODO_MASK) {
@@ -2138,6 +2108,7 @@ void jsiIdle() {
       !jsvMoreFreeVariablesThan(JS_VARS_BEFORE_IDLE_GC)) {
     jsiSetBusy(BUSY_INTERACTIVE, true);
     jsvGarbageCollect();
+    loopsIdling = 0;
     jsiSetBusy(BUSY_INTERACTIVE, false);
   }
 
@@ -2146,7 +2117,7 @@ void jsiIdle() {
     jshKickWatchDog();
 
   // Go to sleep!
-  if (loopsIdling>1 && // once around the idle loop without having done any work already (just in case)
+  if (loopsIdling>=1 && // once around the idle loop without having done any work already (just in case)
 #ifdef USB
       !jshIsUSBSERIALConnected() && // if USB is on, no point sleeping (later, sleep might be more drastic)
 #endif
@@ -2172,8 +2143,10 @@ bool jsiLoop() {
 #ifndef EMBEDDED
       if (jsiTimeSinceCtrlC < jshGetTimeFromMilliseconds(5000))
         exit(0); // exit if ctrl-c on empty input line
-      else
+      else {
+        jsiConsoleRemoveInputLine();
         jsiConsolePrintf("Press Ctrl-C again to exit\n");
+      }
 #endif
       jsiTimeSinceCtrlC = 0;
     }

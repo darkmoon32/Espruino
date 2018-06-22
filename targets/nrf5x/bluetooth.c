@@ -617,9 +617,8 @@ static void on_ble_evt(ble_evt_t * p_ble_evt) {
           jsvObjectSetChildAndUnLock(evt, "rssi", jsvNewFromInteger(p_adv->rssi));
           //jsvObjectSetChildAndUnLock(evt, "addr_type", jsvNewFromInteger(p_adv->peer_addr.addr_type));
           jsvObjectSetChildAndUnLock(evt, "id", bleAddrToStr(p_adv->peer_addr));
-          JsVar *data = jsvNewStringOfLength(p_adv->dlen);
+          JsVar *data = jsvNewStringOfLength(p_adv->dlen, (char*)p_adv->data);
           if (data) {
-            jsvSetString(data, (char*)p_adv->data, p_adv->dlen);
             JsVar *ab = jsvNewArrayBufferFromString(data, p_adv->dlen);
             jsvUnLock(data);
             jsvObjectSetChildAndUnLock(evt, "data", ab);
@@ -637,9 +636,8 @@ static void on_ble_evt(ble_evt_t * p_ble_evt) {
         // We got a param write event - add this to the object callback queue
         JsVar *evt = jsvNewObject();
         if (evt) {
-          JsVar *data = jsvNewStringOfLength(p_evt_write->len);
+          JsVar *data = jsvNewStringOfLength(p_evt_write->len, (char*)p_evt_write->data);
           if (data) {
-            jsvSetString(data, (char*)p_evt_write->data, p_evt_write->len);
             JsVar *ab = jsvNewArrayBufferFromString(data, p_evt_write->len);
             jsvUnLock(data);
             jsvObjectSetChildAndUnLock(evt, "data", ab);
@@ -1112,18 +1110,14 @@ static void gap_params_init() {
     ble_gap_conn_sec_mode_t sec_mode;
 
     char deviceName[BLE_GAP_DEVNAME_MAX_LEN];
-#if defined(PUCKJS)
-    strcpy(deviceName,"Puck.js");
-#elif defined(RUUVITAG)
-    strcpy(deviceName,"RuuviTag");
-#elif defined(HEXBADGE)
-    strcpy(deviceName,"Badge");
+#if defined(BLUETOOTH_NAME_PREFIX)
+    strcpy(deviceName,BLUETOOTH_NAME_PREFIX);
 #else
     strcpy(deviceName,"Espruino "PC_BOARD_ID);
 #endif
 
     size_t len = strlen(deviceName);
-#if defined(PUCKJS) || defined(RUUVITAG) || defined(HEXBADGE)
+#if defined(BLUETOOTH_NAME_PREFIX)
     // append last 2 bytes of MAC address to name
     uint32_t addr =  NRF_FICR->DEVICEADDR[0];
     deviceName[len++] = ' ';
@@ -1792,6 +1786,11 @@ void jsble_set_services(JsVar *data) {
     }
     jsvObjectIteratorFree(&it);
   }
+}
+
+/// Disconnect from the given connection
+uint32_t jsble_disconnect(uint16_t conn_handle) {
+  return sd_ble_gap_disconnect(conn_handle, BLE_HCI_REMOTE_USER_TERMINATED_CONNECTION);
 }
 
 #if BLE_HIDS_ENABLED

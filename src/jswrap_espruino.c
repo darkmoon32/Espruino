@@ -50,6 +50,26 @@ something that was not possible with `onInit`.
  */
 
 /*JSON{
+  "type" : "event",
+  "class" : "E",
+  "name" : "errorFlag",
+  "params" : [
+    ["errorFlags","JsVar","An array of new error flags, as would be returned by `E.getErrorFlags()`. Error flags that were present before won't be reported."]
+  ]
+}
+This event is called when an error is created by Espruino itself (rather
+than JS code) which changes the state of the error flags reported by
+`E.getErrorFlags()`
+
+This could be low memory, full buffers, UART overflow, etc. `E.getErrorFlags()`
+has a full description of each type of error.
+
+This event will only be emitted when error flag is set. If the error
+flag was already set nothing will be emitted. To clear error flags
+so that you do get a callback each time a flag is set, call `E.getErrorFlags()`.
+*/
+
+/*JSON{
   "type" : "staticmethod",
   "class" : "E",
   "name" : "getTemperature",
@@ -654,13 +674,13 @@ Get and reset the error flags. Returns an array that can contain:
 
 `'BUFFER_FULL'`: A buffer for a stream filled up and characters were lost. This can happen to any stream - Serial,HTTP,etc.
 
-`'CALLBACK'`: A callback (s`etWatch`, `setInterval`, `on('data',...)`) caused an error and so was removed.
+`'CALLBACK'`: A callback (`setWatch`, `setInterval`, `on('data',...)`) caused an error and so was removed.
 
 `'LOW_MEMORY'`: Memory is running low - Espruino had to run a garbage collection pass or remove some of the command history
 
 `'MEMORY'`: Espruino ran out of memory and was unable to allocate some data that it needed.
 
-`'JSERR_UART_OVERFLOW'` : A UART received data but it was not read in time and was lost
+`'UART_OVERFLOW'` : A UART received data but it was not read in time and was lost
  */
 JsVar *jswrap_espruino_getErrorFlags() {
   JsErrorFlags flags = jsErrorFlags;
@@ -789,7 +809,7 @@ JsVar *jswrap_espruino_toUint8Array(JsVar *args) {
     ["addr","int","The address of the memory area"],
     ["len","int","The length (in bytes) of the memory area"]
   ],
-  "return" : ["JsVar","A Uint8Array"],
+  "return" : ["JsVar","A String"],
   "return_object" : "String"
 }
 This creates and returns a special type of string, which actually references
@@ -1014,6 +1034,37 @@ JsVar *jswrap_espruino_getSizeOf(JsVar *v, int depth) {
     return arr;
   }
   return jsvNewFromInteger((JsVarInt)jsvCountJsVarsUsed(v));
+}
+
+
+/*JSON{
+  "type" : "staticmethod",
+  "ifndef" : "SAVE_ON_FLASH",
+  "class" : "E",
+  "name" : "getAddressOf",
+  "generate" : "jswrap_espruino_getAddressOf",
+  "params" : [
+    ["v","JsVar","A variable to get the address of"],
+    ["flatAddress","bool","If a flat String or flat ArrayBuffer is supplied, return the address of the data inside it - otherwise 0"]
+  ],
+  "return" : ["int","The address of the given variable"]
+}
+Return the address in memory of the given variable. This can then
+be used with `peek` and `poke` functions. However, changing data in
+JS variables directly (flatAddress=false) will most likely result in a crash.
+
+This functions exists to allow embedded targets to set up
+peripherals such as DMA so that they write directly to
+JS variables.
+
+See http://www.espruino.com/Internals for more information
+ */
+JsVarInt jswrap_espruino_getAddressOf(JsVar *v, bool flatAddress) {
+  if (flatAddress) {
+    size_t len=0;
+    return (JsVarInt)(size_t)jsvGetDataPointer(v, &len);
+  }
+  return (JsVarInt)(size_t)v;
 }
 
 /*JSON{

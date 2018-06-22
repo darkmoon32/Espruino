@@ -233,6 +233,7 @@ src/jswrap_onewire.c \
 src/jswrap_pipe.c \
 src/jswrap_process.c \
 src/jswrap_promise.c \
+src/jswrap_regexp.c \
 src/jswrap_serial.c \
 src/jswrap_spi_i2c.c \
 src/jswrap_stream.c \
@@ -279,8 +280,12 @@ SOURCES += \
 libs/compression/compress_rle.c
 
 else
+
+ifneq ($(FAMILY),ESP8266)
 # If we have enough flash, include the debugger
+# ESP8266 can't do it because it expects tasks to finish within set time
 DEFINES+=-DUSE_DEBUGGER
+endif
 # Use use tab complete
 DEFINES+=-DUSE_TAB_COMPLETE
 
@@ -520,6 +525,7 @@ ifdef USE_BLUETOOTH
   DEFINES += -DBLUETOOTH
   INCLUDE += -I$(ROOT)/libs/bluetooth
   WRAPPERSOURCES += libs/bluetooth/jswrap_bluetooth.c
+  SOURCES += libs/bluetooth/bluetooth_utils.c
 endif
 
 ifeq ($(BOARD),MICROBIT)
@@ -788,7 +794,7 @@ endif
 
 clean:
 	@echo Cleaning targets
-	$(Q)find . -name \*.o | grep -v arm-bcm2708 | xargs rm -f
+	$(Q)find . -name \*.o | grep -v "./arm-bcm2708\|./gcc-arm-none-eabi" | xargs rm -f
 	$(Q)rm -f $(ROOT)/gen/*.c $(ROOT)/gen/*.h $(ROOT)/gen/*.ld
 	$(Q)rm -f $(ROOT)/scripts/*.pyc $(ROOT)/boards/*.pyc
 	$(Q)rm -f $(PROJ_NAME).elf
