@@ -21,7 +21,7 @@ info = {
  'link' :  [ "www.st.com/content/st_com/en/products/evaluation-tools/product-evaluation-tools/mcu-eval-tools/mcu-eval-tools/stm32-mcu-eval-tools/stm32-mcu-discovery-kits/32l496gdiscovery.html" ],
  'default_console' : "EV_USBSERIAL",
 
- 'variables' :  15359, 			# variables computes from the RAM size : (256-16)*1024/16-1
+ 'variables' :  15359, 	# variables computed from available RAM size : (256-16)*1024/16-1
  'binary_name' : 'espruino_%v_stm32l496gdiscovery.bin',
  'build' : {
    'optimizeflags' : '-O3',
@@ -30,9 +30,11 @@ info = {
      'GRAPHICS',
      'NEOPIXEL',
      'CRYPTO',
-     'TLS'
+     'TLS',
+     'FILESYSTEM'
    ],
    'makefile' : [
+     'WRAPPERSOURCES+=targets/nucleo/jswrap_nucleo.c',
      'DEFINES+=-DUSE_USB_OTG_FS=1',
      'STLIB=STM32L496xx',
      'PRECOMPILED_OBJS+=$(ROOT)/targetlibs/stm32l4/lib/CMSIS/Device/ST/STM32L4xx/Source/Templates/gcc/startup_stm32l496xx.o'
@@ -53,14 +55,12 @@ chip = {
   'adc' : 3,
   'dac' : 2,
   'saved_code' : {
-    # code size 300000 = 0x493E0 starts at 0x0800 0000 ends at 0x0804 93E0
+    # code size (with debug) : 448000 ~ 0x6D800 starts at 0x0800 0000 ends at 0x0806 D800
     # so we have some left room for Espruino firmware and no risk to clear it while saving
-    'address' : 0x08050000, # flash_saved_code_start 0x080493E0 to 0x8100000
-    # we have enough flash space in this single flash page to save all of the ram
-    'page_size' :  2048, # size of pages : on STM32F411, last 2 pages are 128 Kbytes
-    # we use the last flash page only, furthermore it persists after a firmware flash of the board
-    'pages' : 352, # count of pages we're using to save RAM to Flash,
-    'flash_available' : 704 # binary will have a hole in it, so we just want to test against full size
+    'address' : 0x080D0000, # We have 0 -> 0xFFFFF (1MB), so this is at the end of flash
+    'page_size' :  2048, # size of pages, 256 pages on bank1, 256 pages on bank2
+    'pages' : 64, # count of pages we're using to save RAM to Flash 
+    'flash_available' : 832 # kb - quantity reserved to receive the Firmware
   },
 };
 
@@ -69,6 +69,11 @@ devices = {
             'pin_2' : 'H1' }, 	# to mic vdd
   'OSC_RTC' : { 'pin_1' : 'C14', # OSC32_IN (32kHz oscillator)
                 'pin_2' : 'C15' }, # OSC32_OUT
+  'BTN1' : { 'pin' : 'C13', 'pinstate' : 'IN_PULLDOWN' }, # joy center
+#  'BTN2' : { 'pin' : 'I9', 'pinstate' : 'IN_PULLDOWN' }, # joy l
+#  'BTN3' : { 'pin' : 'F11', 'pinstate' : 'IN_PULLDOWN' }, # joy r
+#  'BTN4' : { 'pin' : 'I8', 'pinstate' : 'IN_PULLDOWN' }, # joy u
+#  'BTN5' : { 'pin' : 'I10', 'pinstate' : 'IN_PULLDOWN' }, # joy d
   'LED2' : { 'pin' : 'B13' },
   'JTAG' : {
         'pin_MS' : 'A13', # TMS/SWDIO

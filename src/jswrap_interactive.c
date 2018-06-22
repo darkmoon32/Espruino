@@ -88,7 +88,7 @@ void jswrap_interface_setSleepIndicator(JsVar *pinVar) {
 /*JSON{
   "type" : "function",
   "name" : "setDeepSleep",
-  "if" : "defined(EFM32) || defined(STM32)",
+  "#if" : "defined(EFM32) || defined(STM32)",
   "generate" : "jswrap_interface_setDeepSleep",
   "params" : [
     ["sleep","bool",""]
@@ -354,7 +354,12 @@ Return the current system time in Seconds (as a floating point number)
     ["time","float",""]
   ]
 }
-Set the current system time in seconds (to the nearest second)
+Set the current system time in seconds (to the nearest second).
+
+This is used with `getTime`, the time reported from `setWatch`, as
+well as when using `new Date()`.
+
+To set the timezone for all new Dates, use `E.setTimeZone(hours)`.
  */
 void jswrap_interactive_setTime(JsVarFloat time) {
   JsSysTime stime = jshGetTimeFromMilliseconds(time*1000);

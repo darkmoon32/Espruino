@@ -93,7 +93,9 @@ def get_jsondata(is_for_document, parseArgs = True, board = False):
     print("Script location "+scriptdir)
     os.chdir(scriptdir+"/..")
 
+    # C files that we'll scan for JSON data
     jswraps = []
+    # definitions that are used when evaluating IFDEFs/etc
     defines = []
 
     if board and ("build" in board.info)  and ("defines" in board.info["build"]):
@@ -121,9 +123,12 @@ def get_jsondata(is_for_document, parseArgs = True, board = False):
           else:
             print("Unknown command-line option")
             exit(1)
-        else:
+        elif arg[-2:]==".c": 
+          # C file, all good
           explicit_files = True
           jswraps.append(arg)
+        else:
+          print("WARNING: Ignoring unknown file type: " + arg)
     else:
       print("Scanning for jswrap.c files")
       jswraps = subprocess.check_output(["find", ".", "-name", "jswrap*.c"]).strip().split("\n")
@@ -180,12 +185,15 @@ def get_jsondata(is_for_document, parseArgs = True, board = False):
             if ("#if" in jsondata):
               expr = jsondata["#if"]
               for defn in defines:
+                expr = expr.replace("defined("+defn+")", "True");
                 if defn.find('=')!=-1:
                   dname = defn[:defn.find('=')]
                   dkey = defn[defn.find('=')+1:]
+                  expr = expr.replace("defined("+dname+")", "True");
                   expr = expr.replace(dname, dkey);
               # Now replace any defined(...) we haven't heard of with false
               expr = re.sub(r"defined\([^\)]*\)", "False", expr)
+              expr = expr.replace("||","or").replace("&&","and");
               try:
                 r = eval(expr)
               except:
@@ -233,7 +241,6 @@ def get_jsondata(is_for_document, parseArgs = True, board = False):
           "filename" : "BOARD.py",
           "include" : "platform_config.h"
         })
-
     return jsondatas
 
 # Takes the data from get_jsondata and restructures it in prepartion for output as JS
@@ -358,9 +365,14 @@ def get_prefix_name(jsondata):
 
 def get_ifdef_description(d):
   if d=="SAVE_ON_FLASH": return "devices with low flash memory"
+  if d=="SAVE_ON_FLASH_EXTREME": return "devices with extremely low flash memory (eg. HYSTM32_28)"
+  if d=="STM32": return "STM32 devices (including Espruino Original, Pico and WiFi)"
   if d=="STM32F1": return "STM32F1 devices (including Original Espruino Board)"
-  if d=="NRF52": return "NRF52 devices (like Puck.js)"
-  if d=="ESP8266": return "Espruino running on ESP8266"
+  if d=="NRF52": return "NRF52 devices (like Puck.js and Pixl.js)"
+  if d=="ESPRUINOWIFI": return "Espruino WiFi boards"
+  if d=="ESP8266": return "ESP8266 devices running Espruino"
+  if d=="ESP32": return "ESP32 devices"
+  if d=="EFM32": return "EFM32 devices"
   if d=="USE_LCD_SDL": return "Linux with SDL support compiled in"
   if d=="USE_TLS": return "devices with TLS and SSL support (Espruino Pico and Espruino WiFi only)"
   if d=="RELEASE": return "release builds"
@@ -371,6 +383,7 @@ def get_ifdef_description(d):
   if d=="USE_AES": return "devices that support AES (Espruino Pico, Espruino WiFi or Linux)"
   if d=="USE_CRYPTO": return "devices that support Crypto Functionality (Espruino Pico, Espruino WiFi, Linux or ESP8266)"
   if d=="USE_FLASHFS": return "devices with filesystem in Flash support enabled (ESP32 only)"
+  if d=="USE_TERMINAL": return "devices with VT100 terminal emulation enabled (Pixl.js only)"
   print("WARNING: Unknown ifdef '"+d+"' in common.get_ifdef_description")
   return d
 

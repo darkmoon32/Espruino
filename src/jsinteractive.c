@@ -22,10 +22,11 @@
 #include "jswrap_io.h"
 #include "jswrap_stream.h"
 #include "jswrap_espruino.h" // jswrap_espruino_getErrorFlagArray
-#include "jswrap_flash.h" // load and save to flash
+#include "jsflash.h" // load and save to flash
 #include "jswrap_object.h" // jswrap_object_keys_or_property_names
 #include "jsnative.h" // jsnSanityTest
 #ifdef BLUETOOTH
+#include "bluetooth.h"
 #include "jswrap_bluetooth.h"
 #endif
 
@@ -144,6 +145,24 @@ static NO_INLINE void jsiAppendToInputLine(const char *str) {
     jsvStringIteratorAppend(&inputLineIterator, *(str++));
     inputLineLength++;
   }
+}
+
+/// If Espruino could choose right now, what would be the best console device to use?
+IOEventFlags jsiGetPreferredConsoleDevice() {
+  IOEventFlags dev = DEFAULT_CONSOLE_DEVICE;
+#ifdef USE_TERMINAL
+  if (!jshIsDeviceInitialised(dev))
+    dev = EV_TERMINAL;
+#endif
+#ifdef USB
+  if (jshIsUSBSERIALConnected())
+    dev = EV_USBSERIAL;
+#endif
+#ifdef BLUETOOTH
+  if (jsble_has_simple_connection(dev))
+    dev = EV_BLUETOOTH;
+#endif
+  return dev;
 }
 
 void jsiSetConsoleDevice(IOEventFlags device, bool force) {
@@ -667,6 +686,18 @@ void jsiDumpHardwareInitialisation(vcbprintf_callback user_callback, void *user_
       if (pin == BTN1_PININDEX &&
           statem == BTN1_PINSTATE) continue;
 #endif
+#if defined(BTN2_PININDEX) && defined(BTN2_PINSTATE)
+      if (pin == BTN2_PININDEX &&
+          statem == BTN2_PINSTATE) continue;
+#endif
+#if defined(BTN3_PININDEX) && defined(BTN3_PINSTATE)
+      if (pin == BTN3_PININDEX &&
+          statem == BTN3_PINSTATE) continue;
+#endif
+#if defined(BTN4_PININDEX) && defined(BTN4_PINSTATE)
+      if (pin == BTN4_PININDEX &&
+          statem == BTN4_PINSTATE) continue;
+#endif
 
       // don't bother with normal inputs, as they come up in this state (ish) anyway
       if (statem != JSHPINSTATE_GPIO_IN && statem != JSHPINSTATE_ADC_IN) {
@@ -780,6 +811,9 @@ void jsiSemiInit(bool autoLoad) {
 
   if (jsiEcho()) { // intentionally not using jsiShowInputLine()
     if (!loadFlash) {
+#ifdef USE_TERMINAL
+      if (consoleDevice != EV_TERMINAL) // don't spam the terminal
+#endif
       jsiConsolePrint(
 #ifndef LINUX
           // set up terminal to avoid word wrap
@@ -787,15 +821,15 @@ void jsiSemiInit(bool autoLoad) {
 #endif
           // rectangles @ http://www.network-science.de/ascii/
           "\n"
-          " _____                 _ \n"
-          "|   __|___ ___ ___ _ _|_|___ ___ \n"
-          "|   __|_ -| . |  _| | | |   | . |\n"
-          "|_____|___|  _|_| |___|_|_|_|___|\n"
-          "          |_| http://espruino.com\n"
-          " "JS_VERSION" Copyright 2017 G.Williams\n"
+          " ____                 _ \n"
+          "|  __|___ ___ ___ _ _|_|___ ___ \n"
+          "|  __|_ -| . |  _| | | |   | . |\n"
+          "|____|___|  _|_| |___|_|_|_|___|\n"
+          "         |_| espruino.com\n"
+          " "JS_VERSION" (c) 2017 G.Williams\n"
         // Point out about donations - but don't bug people
         // who bought boards that helped Espruino
-#if !defined(PICO) && !defined(ESPRUINOBOARD) && !defined(ESPRUINOWIFI) && !defined(PUCKJS)
+#if !defined(PICO) && !defined(ESPRUINOBOARD) && !defined(ESPRUINOWIFI) && !defined(PUCKJS) && !defined(PIXLJS)
           "\n"
           "Espruino is Open Source. Our work is supported\n"
           "only by sales of official boards and donations:\n"
@@ -816,7 +850,7 @@ void jsiInit(bool autoLoad) {
   jsiStatus = JSIS_COMPLETELY_RESET;
 
 #if defined(LINUX) || !defined(USB)
-  consoleDevice = DEFAULT_CONSOLE_DEVICE;
+  consoleDevice = jsiGetPreferredConsoleDevice();
 #else
   consoleDevice = EV_LIMBO;
 #endif
@@ -839,10 +873,9 @@ void jsiOneSecondAfterStartup() {
      char or two can get corrupted.
    */
 #ifdef USB
+
   if (consoleDevice == EV_LIMBO) {
-    consoleDevice = DEFAULT_CONSOLE_DEVICE;
-    if (jshIsUSBSERIALConnected())
-      consoleDevice = EV_USBSERIAL;
+    consoleDevice = jsiGetPreferredConsoleDevice();
     // now move any output that was made to Limbo to the given device
     jshTransmitMove(EV_LIMBO, consoleDevice);
     // finally, kick output - just in case
@@ -948,7 +981,6 @@ bool jsiIsInHistory(JsVar *line) {
 
 void jsiReplaceInputLine(JsVar *newLine) {
   if (jsiShowInputLine()) {
-    size_t oldLen =  jsvGetStringLength(inputLine);
     jsiMoveCursorChar(inputLine, inputCursorPos, 0); // move cursor to start
     jsiConsoleEraseAfterCursor(); // delete all to right and down
     jsiConsolePrintStringVarWithNewLineChar(newLine,0,':');
@@ -1102,6 +1134,7 @@ void jsiCheckErrors() {
     jsiConsoleRemoveInputLine();
     jsiConsolePrint("Execution Interrupted during event processing.\n");
   }
+  bool reportedError = false;
   JsVar *exception = jspGetException();
   if (exception) {
     JsVar *process = jsvObjectGetChild(execInfo.root, "process", 0);
@@ -1118,6 +1151,7 @@ void jsiCheckErrors() {
   if (exception) {
     jsiConsoleRemoveInputLine();
     jsiConsolePrintf("Uncaught %v\n", exception);
+    reportedError = true;
     if (jsvIsObject(exception)) {
       JsVar *stackTrace = jsvObjectGetChild(exception, "stack", 0);
       if (stackTrace) {
@@ -1135,10 +1169,12 @@ void jsiCheckErrors() {
     jsiConsoleRemoveInputLine();
     jsiConsolePrint("Execution Interrupted\n");
     jspSetInterrupted(false);
+    reportedError = true;
   }
   JsVar *stackTrace = jspGetStackTrace();
   if (stackTrace) {
-    jsiConsolePrintStringVar(stackTrace);
+    if (reportedError)
+      jsiConsolePrintStringVar(stackTrace);
     jsvUnLock(stackTrace);
   }
   if (lastJsErrorFlags != jsErrorFlags) {
@@ -1720,21 +1756,12 @@ void jsiCtrlC() {
   execInfo.execute |= EXEC_CTRL_C;
 }
 
-/** Take an event for a UART and handle the chareacters we're getting, potentially
- * grabbing more characters as well if it's easy. If more character events are
- * grabbed, the number of extra events (not characters) is returned */
-int jsiHandleIOEventForUSART(JsVar *usartClass, IOEvent *event) {
-  int eventsHandled = 0;
-  /* work out byteSize. On STM32 we fake 7 bit, and it's easier to
-   * check the options and work out the masking here than it is to
-   * do it in the IRQ */
-  unsigned char bytesize = 8;
-  JsVar *options = jsvObjectGetChild(usartClass, DEVICE_OPTIONS_NAME, 0);
-  if(jsvIsObject(options)) {
-    unsigned char c = (unsigned char)jsvGetIntegerAndUnLock(jsvObjectGetChild(options, "bytesize", 0));
-    if (c>=7 && c<10) bytesize = c;
-  }
-  jsvUnLock(options);
+/** Grab as many characters as possible from the event queue for the given event
+   and return a JsVar containing them. 'eventsHandled' is set to the number of
+   extra events (not characters) is returned */
+static JsVar *jsiExtractIOEventData(IOEvent *event, int *eventsHandled) {
+  assert(eventsHandled);
+  *eventsHandled = 0;
 
   JsVar *stringData = jsvNewFromEmptyString();
   if (stringData) {
@@ -1744,19 +1771,28 @@ int jsiHandleIOEventForUSART(JsVar *usartClass, IOEvent *event) {
     int i, chars = IOEVENTFLAGS_GETCHARS(event->flags);
     while (chars) {
       for (i=0;i<chars;i++) {
-        char ch = (char)(event->data.chars[i] & ((1<<bytesize)-1)); // mask
-        jsvStringIteratorAppend(&it, ch);
+        jsvStringIteratorAppend(&it, event->data.chars[i]);
       }
       // look down the stack and see if there is more data
       if (jshIsTopEvent(IOEVENTFLAGS_GETTYPE(event->flags))) {
         jshPopIOEvent(event);
-        eventsHandled++;
+        (*eventsHandled)++;
         chars = IOEVENTFLAGS_GETCHARS(event->flags);
       } else
         chars = 0;
     }
     jsvStringIteratorFree(&it);
+  }
+  return stringData;
+}
 
+/** Take an event for a UART and handle the characters we're getting, potentially
+ * grabbing more characters as well if it's easy. If more character events are
+ * grabbed, the number of extra events (not characters) is returned */
+int jsiHandleIOEventForUSART(JsVar *usartClass, IOEvent *event) {
+  int eventsHandled = 0;
+  JsVar *stringData = jsiExtractIOEventData(event,  &eventsHandled);
+  if (stringData) {
     // Now run the handler
     jswrap_stream_pushData(usartClass, stringData, true);
     jsvUnLock(stringData);
@@ -1811,6 +1847,10 @@ void jsiIdle() {
           jsiExecuteObjectCallbacks(usartClass, JS_EVENT_PREFIX"parity", 0, 0);
       }
       jsvUnLock(usartClass);
+#ifdef BLUETOOTH
+    } else if ((eventType == EV_BLUETOOTH_PENDING) || (eventType == EV_BLUETOOTH_PENDING_DATA)) {
+      maxEvents -= jsble_exec_pending(&event);
+#endif
     } else if (DEVICE_IS_EXTI(eventType)) { // ---------------------------------------------------------------- PIN WATCH
       // we have an event... find out what it was for...
       // Check everything in our Watch array
@@ -1890,6 +1930,9 @@ void jsiIdle() {
                 jsvObjectSetChild(data, "time", timePtr); // no unlock
                 jsvObjectSetChildAndUnLock(data, "pin", jsvNewFromPin(pin));
                 jsvObjectSetChildAndUnLock(data, "state", jsvNewFromBool(pinIsHigh));
+                Pin dataPin = jshGetEventDataPin(eventType);
+                if (jshIsPinValid(dataPin))
+                  jsvObjectSetChildAndUnLock(data, "data", jsvNewFromBool((event.flags&EV_EXTI_DATA_PIN_HIGH)!=0));
               }
               if (!jsiExecuteEventCallback(0, watchCallback, 1, &data) && watchRecurring) {
                 jsError("Ctrl-C while processing watch - removing it.");
@@ -2078,7 +2121,7 @@ void jsiIdle() {
       jsiSoftKill();
       jspSoftKill();
       jsvSoftKill();
-      jsfSaveToFlash(SFF_SAVE_STATE, 0);
+      jsfSaveToFlash();
       jshReset();
       jsvSoftInit();
       jspSoftInit();
@@ -2263,11 +2306,10 @@ void jsiDumpState(vcbprintf_callback user_callback, void *user_data) {
   // and now the actual hardware
   jsiDumpHardwareInitialisation(user_callback, user_data, true/*human readable*/);
 
-  const char *code = jsfGetBootCodeFromFlash(false);
+  JsVar *code = jsfGetBootCodeFromFlash(false);
   if (code) {
-    user_callback("// Code saved with E.setBootCode\n", user_data);
-    user_callback(code, user_data);
-    user_callback("\n", user_data);
+    cbprintf(user_callback, user_data, "// Code saved with E.setBootCode\n%s\n", code);
+    jsvUnLock(code);
   }
 }
 

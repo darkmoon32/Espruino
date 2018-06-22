@@ -23,7 +23,7 @@ info = {
  'default_console_baudrate' : "9600",
  'variables' : 2500, # How many variables are allocated for Espruino to use. RAM will be overflowed if this number is too high and code won't compile.
  'bootloader' : 1,
- 'binary_name' : 'espruino_%v_puckjs.hex',
+ 'binary_name' : 'espruino_%v_mdbt42q.hex',
  'build' : {
    'optimizeflags' : '-Os',
    'libraries' : [
@@ -39,6 +39,7 @@ info = {
    ],
    'makefile' : [
      'DEFINES+=-DHAL_NFC_ENGINEERING_BC_FTPAN_WORKAROUND=1', # Looks like proper production nRF52s had this issue
+     'DEFINES+=-DCONFIG_GPIO_AS_PINRESET', # Allow the reset pin to work
      'DEFINES+=-DBLUETOOTH_NAME_PREFIX=\'"MQBT42Q"\'',
      'DFU_PRIVATE_KEY=targets/nrf5x_dfu/dfu_private_key.pem',
      'DFU_SETTINGS=--application-version 0xff --hw-version 52 --sd-req 0x8C'
@@ -59,10 +60,10 @@ chip = {
   'adc' : 1,
   'dac' : 0,
   'saved_code' : {
-    'address' : ((118 - 3) * 4096), # Bootloader takes pages 120-127, FS takes 118-119
+    'address' : ((118 - 10) * 4096), # Bootloader takes pages 120-127, FS takes 118-119
     'page_size' : 4096,
-    'pages' : 3,
-    'flash_available' : 512 - ((31 + 8 + 1 + 3)*4) # Softdevice uses 31 pages of flash, bootloader 8, FS 1, code 3. Each page is 4 kb.
+    'pages' : 10,
+    'flash_available' : 512 - ((31 + 8 + 2 + 10)*4) # Softdevice uses 31 pages of flash, bootloader 8, FS 2, code 10. Each page is 4 kb.
   },
 };
 

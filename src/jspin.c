@@ -32,22 +32,14 @@ BITFIELD_DECL(jshPinStateIsManual, JSH_PIN_COUNT);
 // ----------------------------------------------------------------------------
 
 
-/**
- * Validate that the pin is a good pin.
- * \return True if the pin is valid.
- */
 bool jshIsPinValid(Pin pin) {
   // Note, PIN_UNDEFINED is always > JSH_PIN_COUNT
-  return pin < JSH_PIN_COUNT && pinInfo[pin].port != JSH_PORT_NONE;
+  return pin < JSH_PIN_COUNT && (pinInfo[pin].port&JSH_PORT_MASK) != JSH_PORT_NONE;
 }
 
-/**
- * Get a pin value from an encoded strin.
- * \return A pin value.
- */
 Pin jshGetPinFromString(const char *s) {
-  if ((s[0]>='A' && s[0]<='I') && s[1]) {
-    int port = JSH_PORTA+s[0]-'A';
+  if (((s[0]>='A' && s[0]<='I') || s[0]=='V') && s[1]) {
+    int port = (s[0]=='V') ? JSH_PORTV : JSH_PORTA+s[0]-'A';
     int pin = -1;
     if (s[1]>='0' && s[1]<='9') {
       if (!s[2]) { // D0-D9
@@ -64,7 +56,7 @@ Pin jshGetPinFromString(const char *s) {
 #ifdef PIN_NAMES_DIRECT
       int i;
       for (i=0;i<JSH_PIN_COUNT;i++)
-        if (pinInfo[i].port == port && pinInfo[i].pin==pin)
+        if ((pinInfo[i].port&JSH_PORT_MASK) == port && pinInfo[i].pin==pin)
           return (Pin)i;
 #else
       if (port == JSH_PORTA) {
@@ -223,9 +215,9 @@ void jshPinOutput(
     bool value //!< The new value to set on the pin.
   ) {
   if (jshIsPinValid(pin)) {
+    jshPinSetValue(pin, value);
     if (!jshGetPinStateIsManual(pin))
       jshPinSetState(pin, JSHPINSTATE_GPIO_OUT);
-    jshPinSetValue(pin, value);
   }
   // Handle pin being invalid.
   else jsExceptionHere(JSET_ERROR, "Invalid pin!");
@@ -236,44 +228,24 @@ void jshPinOutput(
 
 // Convert an event type flag into a jshPinFunction for an actual hardware device
 JshPinFunction jshGetPinFunctionFromDevice(IOEventFlags device) {
- switch (device) {
-   case EV_SERIAL1 : return JSH_USART1;
-   case EV_SERIAL2 : return JSH_USART2;
-   case EV_SERIAL3 : return JSH_USART3;
-   case EV_SERIAL4 : return JSH_USART4;
-   case EV_SERIAL5 : return JSH_USART5;
-   case EV_SERIAL6 : return JSH_USART6;
-
-   case EV_SPI1    : return JSH_SPI1;
-   case EV_SPI2    : return JSH_SPI2;
-   case EV_SPI3    : return JSH_SPI3;
-
-   case EV_I2C1    : return JSH_I2C1;
-   case EV_I2C2    : return JSH_I2C2;
-   case EV_I2C3    : return JSH_I2C3;
-   default: return 0;
- }
+ if (DEVICE_IS_USART(device))
+   return JSH_USART1 + ((device - EV_SERIAL1)<<JSH_SHIFT_TYPE);
+ if (DEVICE_IS_SPI(device))
+   return JSH_SPI1 + ((device - EV_SPI1)<<JSH_SHIFT_TYPE);
+ if (DEVICE_IS_I2C(device))
+   return JSH_I2C1 + ((device - EV_I2C1)<<JSH_SHIFT_TYPE);
+ return 0;
 }
 
 // Convert a jshPinFunction to an event type flag
 IOEventFlags jshGetFromDevicePinFunction(JshPinFunction func) {
- switch (func & JSH_MASK_TYPE) {
-   case JSH_USART1 : return EV_SERIAL1;
-   case JSH_USART2 : return EV_SERIAL2;
-   case JSH_USART3 : return EV_SERIAL3;
-   case JSH_USART4 : return EV_SERIAL4;
-   case JSH_USART5 : return EV_SERIAL5;
-   case JSH_USART6 : return EV_SERIAL6;
-
-   case JSH_SPI1    : return EV_SPI1;
-   case JSH_SPI2    : return EV_SPI2;
-   case JSH_SPI3    : return EV_SPI3;
-
-   case JSH_I2C1    : return EV_I2C1;
-   case JSH_I2C2    : return EV_I2C2;
-   case JSH_I2C3    : return EV_I2C3;
-   default: return 0;
- }
+ if (JSH_PINFUNCTION_IS_USART(func))
+   return EV_SERIAL1 + ((func - JSH_USART1) >> JSH_SHIFT_TYPE);
+ if (JSH_PINFUNCTION_IS_SPI(func))
+   return EV_SPI1 + ((func - JSH_SPI1) >> JSH_SHIFT_TYPE);
+ if (JSH_PINFUNCTION_IS_I2C(func))
+   return EV_I2C1 + ((func - JSH_I2C1) >> JSH_SHIFT_TYPE);
+ return 0;
 }
 
 /** Try and find a specific type of function for the given pin. Can be given an invalid pin and will return 0. */
