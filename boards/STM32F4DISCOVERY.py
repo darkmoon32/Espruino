@@ -17,7 +17,7 @@ import pinutils;
 info = {
  'name' : "STM32 F4 Discovery",
  'link' :  [ "http://www.st.com/web/catalog/tools/FM116/SC959/SS1532/LN1199/PF252419" ],
- 'default_console' : "EV_SERIAL2", # FIXME: This was S2 because of pin conflict. Not sure if it's really an issue?
+ 'default_console' : "EV_SERIAL6", # FIXME: This was S2 because of pin conflict. Not sure if it's really an issue?
  'variables' : 5450,
  'binary_name' : 'espruino_%v_stm32f4discovery.bin',
  'build' : {
