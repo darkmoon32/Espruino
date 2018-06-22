@@ -23,7 +23,8 @@
 #else
 typedef struct {
   uint16_t uuid;
-  uint8_t type;
+  uint8_t type;			//see BLE_UUID_TYPE_... definitions
+  uint8_t uuid128[16];  //BLE knows 16/32/128 bit uuids. Espruino supports 16/128.
 } PACKED_FLAGS ble_uuid_t;
 typedef struct {
   //uint8_t addr_id_peer;
@@ -44,10 +45,13 @@ typedef struct {
 #define BLE_GAP_AD_TYPE_MANUFACTURER_SPECIFIC_DATA          0xFF
 #define BLE_UUID_TYPE_UNKNOWN (0)
 #define BLE_UUID_TYPE_BLE (1)
+#define BLE_UUID_TYPE_128 2
 #define MSEC_TO_UNITS(MS,MEH) MS
+#define GATT_MTU_SIZE_DEFAULT 23
+#define BLE_NUS_MAX_DATA_LEN 20 //GATT_MTU_SIZE_DEFAULT - 3
 #endif
 
-#ifdef NRF52
+#if defined(NRF52) || defined(ESP32)
 // nRF52 gets the ability to connect to other
 #define CENTRAL_LINK_COUNT              1                                           /**<number of central links used by the application. When changing this number remember to adjust the RAM settings*/
 #define PERIPHERAL_LINK_COUNT           1                                           /**<number of peripheral links used by the application. When changing this number remember to adjust the RAM settings*/

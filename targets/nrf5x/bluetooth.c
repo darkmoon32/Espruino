@@ -544,6 +544,8 @@ JsVar *jsble_get_error_string(uint32_t err_code) {
    case NRF_ERROR_BUSY          : name="BUSY"; break;
    case BLE_ERROR_INVALID_CONN_HANDLE
                                 : name="INVALID_CONN_HANDLE"; break;
+   case BLE_ERROR_GAP_INVALID_BLE_ADDR
+                                : name="INVALID_BLE_ADDR"; break;
   }
   if (name) return jsvVarPrintf("Got BLE error 0x%x (%s)", err_code, name);
   else return jsvVarPrintf("Got BLE error code %d", err_code);
@@ -851,7 +853,7 @@ static void ble_evt_handler(ble_evt_t const * p_ble_evt, void * p_context) {
           bleStatus &= ~BLE_IS_ADVERTISING; // we're not advertising now we're connected
           if (!jsiIsConsoleDeviceForced() && (bleStatus & BLE_NUS_INITED))
             jsiSetConsoleDevice(EV_BLUETOOTH, false);
-          jsble_queue_pending_buf(BLE_GAP_EVT_CONNECTED, 0, (char*)&p_ble_evt->evt.gap_evt.params.connected.peer_addr, sizeof(ble_gap_addr_t));
+          jsble_queue_pending_buf(BLEP_CONNECTED, 0, (char*)&p_ble_evt->evt.gap_evt.params.connected.peer_addr, sizeof(ble_gap_addr_t));
         }
 #if CENTRAL_LINK_COUNT>0
         if (p_ble_evt->evt.gap_evt.params.connected.role == BLE_GAP_ROLE_CENTRAL) {

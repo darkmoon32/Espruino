@@ -27,6 +27,7 @@
 #include "nrf_delay.h"
 #include "nrf5x_utils.h"
 #include "jsflash.h" // for jsfRemoveCodeFromFlash
+#include "bluetooth.h" // for self-test
 
 #include "jswrap_graphics.h"
 #include "lcd_arraybuffer.h"
@@ -44,20 +45,157 @@ Class containing utility functions for [Pixl.js](http://www.espruino.com/Pixl.js
     "type" : "staticmethod",
     "class" : "Pixl",
     "name" : "getBatteryPercentage",
-    "generate" : "jswrap_pixljs_getBatteryPercentage",
+    "generate" : "jswrap_espruino_getBattery",
     "return" : ["int", "A percentage between 0 and 100" ]
 }
+DEPRECATED - Please use `E.getBattery()` instead.
+
 Return an approximate battery percentage remaining based on
 a normal CR2032 battery (2.8 - 2.2v)
 */
-int jswrap_pixljs_getBatteryPercentage() {
-  JsVarFloat v = jswrap_nrf_bluetooth_getBattery();
-  int pc = (v-2.2)*100/0.6;
-  if (pc>100) pc=100;
-  if (pc<0) pc=0;
-  return pc;
+
+/*JSON{
+    "type" : "staticmethod",
+    "class" : "Pixl",
+    "name" : "menu",
+    "generate" : "jswrap_pixljs_menu",
+    "params" : [
+      ["menu","JsVar","An object containing name->function mappings to to be used in a menu"]
+    ],
+    "return" : ["JsVar", "A menu object with `draw`, `move` and `select` functions" ]
+}
+Display a menu on Pixl.js's screen, and set up the buttons to navigate through it.
+
+Supply an object containing menu items. When an item is selected, the
+function it references will be executed. For example:
+
+```
+// First menu
+var mainmenu = {
+  "" : {
+    "title" : "-- Main Menu --"
+  },
+  "Backlight On" : function() { LED1.set(); },
+  "Backlight Off" : function() { LED1.reset(); },
+  "Submenu" : function() { Pixl.menu(submenu); },
+  "Exit" : function() { Pixl.menu(); },
+};
+
+// Submenu
+var submenu = {
+  "" : {
+    "title" : "-- SubMenu --"
+  },
+  "One" : undefined, // do nothing
+  "Two" : undefined, // do nothing
+  "< Back" : function() { Pixl.menu(mainmenu); },
+};
+
+Pixl.menu(mainmenu);
+```
+
+See http://www.espruino.com/graphical_menu for more detailed information.
+*/
+JsVar *jswrap_pixljs_menu(JsVar *menu) {
+  /* Unminified JS code is:
+
+Pixl.show = function(menudata) {
+  if (Pixl.btnWatches) {
+    Pixl.btnWatches.forEach(clearWatch);
+    Pixl.btnWatches = undefined;
+  }
+  g.clear();g.flip(); // clear screen if no menu supplied
+  if (!menudata) return;
+  function im(b) {
+    return {
+      width:8,height:b.length,bpp:1,buffer:new Uint8Array(b).buffer
+    };
+  }
+  if (!menudata[""]) menudata[""]={};
+  g.setFontBitmap();
+  var w = g.getWidth()-9;
+  var h = g.getHeight();
+  menudata[""].x=9;
+  menudata[""].x2=w-2;
+  menudata[""].preflip=function() {
+    g.drawImage(im([
+      0b00010000,
+      0b00111000,
+      0b01111100,
+      0b11111110,
+      0b00010000,
+      0b00010000,
+      0b00010000,
+      0b00010000,
+    ]),0,4);
+    g.drawImage(im([
+      0b00010000,
+      0b00010000,
+      0b00010000,
+      0b00010000,
+      0b11111111,
+      0b01111100,
+      0b00111000,
+      0b00010000,
+    ]),0,h-12);
+    g.drawImage(im([
+      0b00000000,
+      0b00001000,
+      0b00001100,
+      0b00001110,
+      0b11111111,
+      0b00001110,
+      0b00001100,
+      0b00001000,
+    ]),w+1,h-12);
+    //g.drawLine(7,0,7,h);
+    //g.drawLine(w,0,w,h);
+  };
+  var m = require("graphical_menu").list(g, menudata);
+  Pixl.btnWatches = [
+    setWatch(function() { m.move(-1); }, BTN1, {repeat:1}),
+    setWatch(function() { m.move(1); }, BTN4, {repeat:1}),
+    setWatch(function() { m.select(); }, BTN3, {repeat:1})
+  ];
+  return m;
+};
+*/
+
+  /* TODO: handle this better. Something in build_js_wrapper.py?
+   * We want the function to be defined in the docs so using JSMODULESOURCES
+   * isn't a great idea - ideally there would be some nice way of including it
+   * here.
+   */
+  JsVar *fn = jspEvaluate("(function(a){function c(a){return{width:8,height:a.length,bpp:1,buffer:(new Uint8Array(a)).buffer}}Pixl.btnWatches&&(Pixl.btnWatches.forEach(clearWatch),Pixl.btnWatches=void 0);"
+      "g.clear();g.flip();"
+      "if(a){a['']||(a['']={});g.setFontBitmap();var d=g.getWidth()-9,e=g.getHeight();a[''].x=9;a[''].x2=d-2;a[''].preflip=function(){"
+      "g.drawImage(c([16,56,124,254,16,16,16,16]),0,4);g.drawImage(c([16,16,16,16,255,124,56,16]),0,e-12);g.drawImage(c([0,8,12,14,255,14,12,8]),d+1,e-12)};"
+      "var b=require('graphical_menu').list(g,a);Pixl.btnWatches=[setWatch(function(){b.move(-1)},BTN1,{repeat:1}),setWatch(function(){b.move(1)},BTN4,{repeat:1}),"
+      "setWatch(function(){b.select()},BTN3,{repeat:1})];return b}})",true);
+  JsVar *result = jspExecuteFunction(fn,0,1,&menu);
+  jsvUnLock(fn);
+  return result;
 }
 
+
+/*JSON{
+  "type" : "variable",
+  "name" : "SDA",
+  "generate_full" : "4",
+  "ifdef" : "PIXLJS",
+  "return" : ["pin",""]
+}
+The pin marked SDA on the Arduino pin footprint. This is connected directly to pin A4.
+*/
+/*JSON{
+  "type" : "variable",
+  "name" : "SCL",
+  "generate_full" : "5",
+  "ifdef" : "PIXLJS",
+  "return" : ["pin",""]
+}
+The pin marked SDA on the Arduino pin footprint. This is connected directly to pin A5.
+*/
 
 
 void lcd_wr(int data) {
@@ -119,8 +257,16 @@ void lcd_flip_gfx(JsGraphics *gfx) {
 }
 
 
-void lcd_flip(JsVar *parent) {
-  JsGraphics gfx; if (!graphicsGetFromVar(&gfx, parent)) return;
+/// Send buffer contents to the screen. Usually only the modified data will be output, but if all=true then the whole screen contents is sent
+void lcd_flip(JsVar *parent, bool all) {
+  JsGraphics gfx; 
+  if (!graphicsGetFromVar(&gfx, parent)) return;
+  if (all) {
+    gfx.data.modMinX = 0;
+    gfx.data.modMinY = 0;
+    gfx.data.modMaxX = 127;
+    gfx.data.modMaxY = 63;
+  }
   lcd_flip_gfx(&gfx);
   graphicsSetVar(&gfx);
 }
@@ -212,8 +358,11 @@ static bool pixl_selfTest() {
 
   if (jshPinGetValue(BTN1_PININDEX)==BTN1_ONSTATE)
     jsiConsolePrintf("Release BTN1\n");
+  if (jshPinGetValue(BTN4_PININDEX)==BTN4_ONSTATE)
+    jsiConsolePrintf("Release BTN4\n");
   timeout = 2000;
-  while (jshPinGetValue(BTN1_PININDEX)==BTN1_ONSTATE && timeout--)
+  while ((jshPinGetValue(BTN1_PININDEX)==BTN1_ONSTATE ||
+          jshPinGetValue(BTN4_PININDEX)==BTN4_ONSTATE) && timeout--)
     nrf_delay_ms(1);
   if (jshPinGetValue(BTN1_PININDEX)==BTN1_ONSTATE) {
     jsiConsolePrintf("BTN1 stuck down\n");
@@ -251,6 +400,25 @@ static bool pixl_selfTest() {
   for (i=0;i<sizeof(PIXL_IO_PINS)/sizeof(Pin);i++)
     jshPinSetState(PIXL_IO_PINS[i], JSHPINSTATE_GPIO_IN);
 
+  if (jshHasEvents()) {
+    jsiConsolePrintf("Have events - no BLE test\n");
+  } else {
+    bool bleWorking = false;
+    uint32_t err_code;
+    err_code = jsble_set_scanning(true);
+    jsble_check_error(err_code);
+    int timeout = 20;
+    while (timeout-- && !jshHasEvents()) {
+      nrf_delay_ms(100);
+    }
+    err_code = jsble_set_scanning(false);
+    jsble_check_error(err_code);
+    if (!jshHasEvents()) {
+      jsiConsolePrintf("No BLE adverts found in 2s\n");
+      ok = false;
+    }
+  }
+
   return ok;
 }
 
@@ -278,7 +446,8 @@ void jswrap_pixljs_init() {
   gfx.data.bpp = 1;
   lcdInit_ArrayBuffer(&gfx);
   graphicsSetVar(&gfx);
-  jsvObjectSetChild(execInfo.root,"g",graphics);
+  jsvObjectSetChild(execInfo.root, "g", graphics);
+  jsvObjectSetChild(execInfo.hiddenRoot, JS_GRAPHICS_VAR, graphics);
   graphicsGetFromVar(&gfx, graphics);
   // Set initial image
   const unsigned char PIXLJS_IMG[] = {
@@ -302,7 +471,7 @@ void jswrap_pixljs_init() {
   };
 
   // Create 'flip' fn
-  JsVar *fn = jsvNewNativeFunction((void (*)(void))lcd_flip, JSWAT_VOID|JSWAT_THIS_ARG);
+  JsVar *fn = jsvNewNativeFunction((void (*)(void))lcd_flip, JSWAT_VOID|JSWAT_THIS_ARG|(JSWAT_BOOL << (JSWAT_BITS*1)));
   jsvObjectSetChildAndUnLock(graphics,"flip",fn);
   // LCD init 2
   jshDelayMicroseconds(10000);
@@ -310,11 +479,12 @@ void jswrap_pixljs_init() {
   jshDelayMicroseconds(10000);
   const unsigned char LCD_SPI_INIT_DATA[] = {
        //0xE2,  // soft reset
-       0xA3,   // bias 1/7
+       0xA2,   // bias 1/9
+       //0xA3,   // bias 1/7
        0xC8,   // reverse scan dir
+       0x81,   // contrast control (next byte)
+       35,     // actual contrast (0..63)
        0x25,   // regulation resistor ratio (0..7)
-       0x81,   // contrast control
-       0x12,
        0x2F,   // control power circuits - last 3 bits = VB/VR/VF
        0xA0,   // start at column 128
        0xAF    // disp on
@@ -349,7 +519,7 @@ void jswrap_pixljs_init() {
   lcd_flip_gfx(&gfx);
 
 
-  if (firstStart && jshPinGetValue(BTN1_PININDEX) == BTN1_ONSTATE) {
+  if (firstStart && (jshPinGetValue(BTN1_PININDEX) == BTN1_ONSTATE || jshPinGetValue(BTN4_PININDEX) == BTN4_ONSTATE)) {
     // don't do it during a software reset - only first hardware reset
     jsiConsolePrintf("SELF TEST\n");
     if (pixl_selfTest()) jsiConsolePrintf("Test passed!\n");

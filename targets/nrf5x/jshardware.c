@@ -43,6 +43,7 @@ void app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info) {
 #include "nrf_gpiote.h"
 #include "nrf_timer.h"
 #include "nrf_delay.h"
+#include "nrf_nvic.h"
 #ifdef NRF52
 #include "nrf_saadc.h"
 #include "nrf_pwm.h"
@@ -528,11 +529,15 @@ JshPinState jshPinGetState(Pin pin) {
   uint32_t p = NRF_GPIO->PIN_CNF[ipin];
   bool negated = pinInfo[pin].port & JSH_PIN_NEGATED;
   if ((p&GPIO_PIN_CNF_DIR_Msk)==(GPIO_PIN_CNF_DIR_Output<<GPIO_PIN_CNF_DIR_Pos)) {
+    uint32_t pinDrive = (p&GPIO_PIN_CNF_DRIVE_Msk)>>GPIO_PIN_CNF_DRIVE_Pos;
+    uint32_t pinPull = (p&GPIO_PIN_CNF_PULL_Msk)>>GPIO_PIN_CNF_PULL_Pos;
     // Output
-    JshPinState hi = (NRF_GPIO->OUT & (1<<ipin)) ? JSHPINSTATE_PIN_IS_ON : 0;
-    if (negated) hi = !hi;
-    if ((p&GPIO_PIN_CNF_DRIVE_Msk)==(GPIO_PIN_CNF_DRIVE_S0D1<<GPIO_PIN_CNF_DRIVE_Pos)) {
-      if ((p&GPIO_PIN_CNF_PULL_Msk)==(GPIO_PIN_CNF_PULL_Pullup<<GPIO_PIN_CNF_PULL_Pos))
+    bool pinIsHigh = NRF_GPIO->OUT & (1<<ipin);
+    if (negated) pinIsHigh = !pinIsHigh;
+    JshPinState hi = pinIsHigh ? JSHPINSTATE_PIN_IS_ON : 0;
+
+    if (pinDrive==GPIO_PIN_CNF_DRIVE_S0D1 || pinDrive==GPIO_PIN_CNF_DRIVE_H0D1) {
+      if (pinPull==GPIO_PIN_CNF_PULL_Pullup)
         return JSHPINSTATE_GPIO_OUT_OPENDRAIN_PULLUP|hi;
       else {
         if (pinStates[pin])
@@ -1273,7 +1278,18 @@ void jshFlashWrite(void * buf, uint32_t addr, uint32_t len) {
     }
   } else {
     flashIsBusy = true;
-    while ((err = sd_flash_write((uint32_t*)addr, (uint32_t *)buf, len>>2)) == NRF_ERROR_BUSY);
+    uint32_t wordOffset = 0;
+    while (len>0 && !jspIsInterrupted()) {
+      uint32_t l = len;
+#ifdef NRF51
+      if (l>1024) l=1024; // max write size
+#else
+      if (l>4096) l=4096; // max write size
+#endif
+      len -= l;
+      while ((err = sd_flash_write(((uint32_t*)addr)+wordOffset, ((uint32_t *)buf)+wordOffset, l>>2)) == NRF_ERROR_BUSY && !jspIsInterrupted());
+      wordOffset += l>>2;
+    }
     if (err!=NRF_SUCCESS) flashIsBusy = false;
     WAIT_UNTIL(!flashIsBusy, "jshFlashWrite");
   }
@@ -1422,4 +1438,9 @@ unsigned int jshGetRandomNumber() {
 
 unsigned int jshSetSystemClock(JsVar *options) {
   return 0;
+}
+
+/// Perform a proper hard-reboot of the device
+void jshReboot() {
+  NVIC_SystemReset();
 }

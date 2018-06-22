@@ -554,10 +554,15 @@ ifdef USE_CRYPTO
   INCLUDE += -I$(ROOT)/libs/crypto/mbedtls
   INCLUDE += -I$(ROOT)/libs/crypto/mbedtls/include
   WRAPPERSOURCES += libs/crypto/jswrap_crypto.c
-  SOURCES += \
-libs/crypto/mbedtls/library/sha1.c \
-libs/crypto/mbedtls/library/sha256.c \
-libs/crypto/mbedtls/library/sha512.c
+  SOURCES += libs/crypto/mbedtls/library/sha1.c 
+ifdef USE_SHA256
+  DEFINES += -DUSE_SHA256
+  SOURCES += libs/crypto/mbedtls/library/sha256.c
+endif
+ifdef USE_SHA512
+  DEFINES += -DUSE_SHA512
+  SOURCES += libs/crypto/mbedtls/library/sha512.c
+endif
 
 ifdef USE_TLS
   USE_AES=1
@@ -795,6 +800,7 @@ lst: $(PROJ_NAME).lst
 clean:
 	@echo Cleaning targets
 	$(Q)find . -name \*.o | grep -v "./arm-bcm2708\|./gcc-arm-none-eabi" | xargs rm -f
+	$(Q)find . -name \*.d | grep -v "./arm-bcm2708\|./gcc-arm-none-eabi" | xargs rm -f
 	$(Q)rm -f $(ROOT)/gen/*.c $(ROOT)/gen/*.h $(ROOT)/gen/*.ld
 	$(Q)rm -f $(ROOT)/scripts/*.pyc $(ROOT)/boards/*.pyc
 	$(Q)rm -f $(PROJ_NAME).elf

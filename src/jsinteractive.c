@@ -826,7 +826,7 @@ void jsiSemiInit(bool autoLoad) {
           "|  __|_ -| . |  _| | | |   | . |\n"
           "|____|___|  _|_| |___|_|_|_|___|\n"
           "         |_| espruino.com\n"
-          " "JS_VERSION" (c) 2017 G.Williams\n"
+          " "JS_VERSION" (c) 2018 G.Williams\n"
         // Point out about donations - but don't bug people
         // who bought boards that helped Espruino
 #if !defined(PICO) && !defined(ESPRUINOBOARD) && !defined(ESPRUINOWIFI) && !defined(PUCKJS) && !defined(PIXLJS)
@@ -921,6 +921,11 @@ int jsiCountBracketsInInput() {
 
 /// Tries to get rid of some memory (by clearing command history). Returns true if it got rid of something, false if it didn't.
 bool jsiFreeMoreMemory() {
+#ifdef USE_DEBUGGER
+  // remove debug history first
+  jsvObjectRemoveChild(execInfo.hiddenRoot, JSI_DEBUG_HISTORY_NAME);
+#endif
+  // delete history one item at a time
   JsVar *history = jsvObjectGetChild(execInfo.hiddenRoot, JSI_HISTORY_NAME, 0);
   if (!history) return 0;
   JsVar *item = jsvArrayPopFirst(history);
@@ -932,10 +937,22 @@ bool jsiFreeMoreMemory() {
   return freed;
 }
 
+// Return the history array
+static JsVar *jsiGetHistory() {
+  return jsvObjectGetChild(
+      execInfo.hiddenRoot,
+#ifdef USE_DEBUGGER
+      (jsiStatus & JSIS_IN_DEBUGGER) ? JSI_DEBUG_HISTORY_NAME : JSI_HISTORY_NAME,
+#else
+      JSI_HISTORY_NAME,
+#endif
+      JSV_ARRAY);
+}
+
 // Add a new line to the command history
 void jsiHistoryAddLine(JsVar *newLine) {
   if (!newLine || jsvGetStringLength(newLine)==0) return;
-  JsVar *history = jsvObjectGetChild(execInfo.hiddenRoot, JSI_HISTORY_NAME, JSV_ARRAY);
+  JsVar *history = jsiGetHistory();
   if (!history) return; // out of memory
   // if it was already in history, remove it - we'll put it back in front
   JsVar *alreadyInHistory = jsvGetIndexOf(history, newLine, false/*not exact*/);
@@ -949,29 +966,27 @@ void jsiHistoryAddLine(JsVar *newLine) {
 }
 
 JsVar *jsiGetHistoryLine(bool previous /* next if false */) {
-  JsVar *history = jsvObjectGetChild(execInfo.hiddenRoot, JSI_HISTORY_NAME, 0);
+  JsVar *history = jsiGetHistory();
+  if (!history) return 0; // out of memory
   JsVar *historyLine = 0;
-  if (history) {
-    JsVar *idx = jsvGetIndexOf(history, inputLine, true/*exact*/); // get index of current line
-    if (idx) {
-      if (previous && jsvGetPrevSibling(idx)) {
-        historyLine = jsvSkipNameAndUnLock(jsvLock(jsvGetPrevSibling(idx)));
-      } else if (!previous && jsvGetNextSibling(idx)) {
-        historyLine = jsvSkipNameAndUnLock(jsvLock(jsvGetNextSibling(idx)));
-      }
-      jsvUnLock(idx);
-    } else {
-      if (previous) historyLine = jsvSkipNameAndUnLock(jsvGetArrayItem(history, jsvGetArrayLength(history)-1));
-      // if next, we weren't using history so couldn't go forwards
+  JsVar *idx = jsvGetIndexOf(history, inputLine, true/*exact*/); // get index of current line
+  if (idx) {
+    if (previous && jsvGetPrevSibling(idx)) {
+      historyLine = jsvSkipNameAndUnLock(jsvLock(jsvGetPrevSibling(idx)));
+    } else if (!previous && jsvGetNextSibling(idx)) {
+      historyLine = jsvSkipNameAndUnLock(jsvLock(jsvGetNextSibling(idx)));
     }
-
-    jsvUnLock(history);
+    jsvUnLock(idx);
+  } else {
+    if (previous) historyLine = jsvSkipNameAndUnLock(jsvGetArrayItem(history, jsvGetArrayLength(history)-1));
+    // if next, we weren't using history so couldn't go forwards
   }
+  jsvUnLock(history);
   return historyLine;
 }
 
 bool jsiIsInHistory(JsVar *line) {
-  JsVar *history = jsvObjectGetChild(execInfo.hiddenRoot, JSI_HISTORY_NAME, 0);
+  JsVar *history = jsiGetHistory();
   if (!history) return false;
   JsVar *historyFound = jsvGetIndexOf(history, line, true/*exact*/);
   bool inHistory = historyFound!=0;
@@ -992,9 +1007,6 @@ void jsiReplaceInputLine(JsVar *newLine) {
 }
 
 void jsiChangeToHistory(bool previous) {
-#ifdef USE_DEBUGGER
-  if (jsiStatus & JSIS_IN_DEBUGGER) return;
-#endif
   JsVar *nextHistory = jsiGetHistoryLine(previous);
   if (nextHistory) {
     jsiReplaceInputLine(nextHistory);
@@ -1392,6 +1404,7 @@ void jsiHandleNewLine(bool execute) {
 #ifdef USE_DEBUGGER
       if (jsiStatus & JSIS_IN_DEBUGGER) {
         jsiDebuggerLine(lineToExecute);
+        jsiHistoryAddLine(lineToExecute);
         jsvUnLock(lineToExecute);
       } else
 #endif
@@ -2016,7 +2029,7 @@ void jsiIdle() {
           jsvObjectSetChildAndUnLock(data, "time", timePtr);
         }
       }
-      JsVar *interval = jsvObjectGetChild(timerPtr, "interval", 0);
+      bool removeTimer = false;
       if (exec) {
         bool execResult;
         if (data) {
@@ -2026,13 +2039,14 @@ void jsiIdle() {
           execResult = jsiExecuteEventCallbackArgsArray(0, timerCallback, argsArray);
           jsvUnLock(argsArray);
         }
-        if (!execResult && interval) {
-          jsError("Ctrl-C while processing interval - removing it.");
-          jsErrorFlags |= JSERR_CALLBACK;
-          // by setting interval to 0, we now think we've for a Timeout,
-          // which will get removed.
-          jsvUnLock(interval);
-          interval = 0;
+        if (!execResult) {
+          JsVar *interval = jsvObjectGetChild(timerPtr, "interval", 0);
+          if (interval) { // if interval then it's setInterval not setTimeout
+            jsvUnLock(interval);
+            jsError("Ctrl-C while processing interval - removing it.");
+            jsErrorFlags |= JSERR_CALLBACK;
+            removeTimer = true;
+          }
         }
       }
       jsvUnLock(data);
@@ -2056,9 +2070,10 @@ void jsiIdle() {
         }
         jsvUnLock(watchPtr);
       }
-
-      if (interval) {
-        timeUntilNext = timeUntilNext + jsvGetLongIntegerAndUnLock(interval);
+      // Load interval *after* executing code, in case it has changed
+      JsVar *interval = jsvObjectGetChild(timerPtr, "interval", 0);
+      if (!removeTimer && interval) {
+        timeUntilNext = timeUntilNext + jsvGetLongInteger(interval);
       } else {
         // free
         // Beware... may have already been removed!
@@ -2066,7 +2081,7 @@ void jsiIdle() {
         hasDeletedTimer = true;
         timeUntilNext = -1;
       }
-      jsvUnLock(timerCallback);
+      jsvUnLock2(timerCallback,interval);
 
     }
     // update the time until the next timer
@@ -2112,7 +2127,7 @@ void jsiIdle() {
       jsiKill();
       jsvKill();
       jshReset();
-      jsvInit();
+      jsvInit(0);
       jsiSemiInit(false); // don't autoload
     }
     if ((s&JSIS_TODO_FLASH_SAVE) == JSIS_TODO_FLASH_SAVE) {
@@ -2134,7 +2149,7 @@ void jsiIdle() {
       jsvSoftKill();
       jsvKill();
       jshReset();
-      jsvInit();
+      jsvInit(0);
       jsfLoadStateFromFlash();
       jsvSoftInit();
       jspSoftInit();
@@ -2215,7 +2230,20 @@ void jsiDumpState(vcbprintf_callback user_callback, void *user_data) {
     char childName[JSLEX_MAX_TOKEN_LENGTH];
     jsvGetString(child, childName, JSLEX_MAX_TOKEN_LENGTH);
 
-    if (jswIsBuiltInObject(childName)) {
+    bool shouldIgnore = false;
+#if defined(DUMP_IGNORE_VARIABLES)
+    /* We may want to ignore some variables when dumping
+     * so that we get a nice clean output. */
+    const char *v = DUMP_IGNORE_VARIABLES;
+    while (*v) {
+      if (strcmp(v,childName)==0) shouldIgnore=true;
+      v += strlen(v)+1;
+    }
+#endif
+
+    if (shouldIgnore) {
+      // Do nothing
+    } else if (jswIsBuiltInObject(childName)) {
       jsiDumpObjectState(user_callback, user_data, child, data);
     } else if (jsvIsStringEqualOrStartsWith(child, JS_EVENT_PREFIX, true)) {
       // event on global object - skip it, as it'll be internal
@@ -2308,7 +2336,7 @@ void jsiDumpState(vcbprintf_callback user_callback, void *user_data) {
 
   JsVar *code = jsfGetBootCodeFromFlash(false);
   if (code) {
-    cbprintf(user_callback, user_data, "// Code saved with E.setBootCode\n%s\n", code);
+    cbprintf(user_callback, user_data, "// Code saved with E.setBootCode\n%v\n", code);
     jsvUnLock(code);
   }
 }
@@ -2390,7 +2418,7 @@ void jsiDebuggerPrintScope(JsVar *scope) {
   bool found = false;
   while (jsvObjectIteratorHasValue(&it)) {
     JsVar *k = jsvObjectIteratorGetKey(&it);
-    JsVar *ks = jsvAsString(k, false);
+    JsVar *ks = jsvAsString(k);
     JsVar *v = jsvObjectIteratorGetValue(&it);
     size_t l = jsvGetStringLength(ks);
 

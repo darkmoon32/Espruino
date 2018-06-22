@@ -17,6 +17,8 @@ import pinutils;
 
 info = {
  'name' : "MDBT42Q Module",
+ 'link' :  [ "http://www.espruino.com/MDBT42Q" ],
+ 'espruino_page_link' : 'MDBT42Q', 
  'default_console' : "EV_SERIAL1",
  'default_console_tx' : "D6",
  'default_console_rx' : "D8",
@@ -30,7 +32,8 @@ info = {
      'BLUETOOTH',
      'NET',
      'GRAPHICS',
-     'CRYPTO',
+     'CRYPTO','SHA256','SHA512',
+     'AES',
      'NFC',
      'NEOPIXEL'
      #'HASHLIB'
@@ -40,7 +43,7 @@ info = {
    'makefile' : [
      'DEFINES+=-DHAL_NFC_ENGINEERING_BC_FTPAN_WORKAROUND=1', # Looks like proper production nRF52s had this issue
      'DEFINES+=-DCONFIG_GPIO_AS_PINRESET', # Allow the reset pin to work
-     'DEFINES+=-DBLUETOOTH_NAME_PREFIX=\'"MQBT42Q"\'',
+     'DEFINES+=-DBLUETOOTH_NAME_PREFIX=\'"MDBT42Q"\'',
      'DFU_PRIVATE_KEY=targets/nrf5x_dfu/dfu_private_key.pem',
      'DFU_SETTINGS=--application-version 0xff --hw-version 52 --sd-req 0x8C'
    ]
@@ -77,29 +80,46 @@ devices = {
 # left-right, or top-bottom order
 board = {
   'left' : [ 'GND','','','','D25','D26','D27','D28','D29','D30','D31','DEC4','DCC','VDD'],
-  'right' : [ 'GND','D22','SWDIO','SWDCLK','D21/NRST','D20','D19','D18','D17','D16','D15','D14','D13','D12','D11' ],
+  'right2' : [ 'D24', '', 'D23'],
+  'right' : [ 'GND','D22','SWDIO','SWDCLK','D21','D20','D19','D18','D17','D16','D15','D14','D13','D12','D11' ],
   'bottom' : [ 'GND','D0','D1','D2','D3','D4','D5','D6','D7','D8','D9','D10','GND' ],
+  '_notes' : {
+    'D21' : "Also NRST if configured"
+  }
 };
 
 board["_css"] = """
 #board {
-  width: 800px;
-  height: 800px;
+  width: 359px;
+  height: 484px;
   top: 0px;
-  left : 0px;
+  left : 200px;
   background-image: url(img/MDBT42Q.jpg);
 }
 #boardcontainer {
   height: 900px;
 }
 #bottom {
-    top: 639px;
-    left: 291px;
+    top: 440px;
+    left: 56px;
+}
+#left {
+    top: 115px;
+    right: 316px;
+}
+#right2 {
+    top: 115px;
+    right: 110px;
 }
 #right {
-    top: 304px;
-    left: 640px;
+    top: 115px;
+    left: 316px;
 }
+
+.leftpin { height: 17px; }
+.left2pin { height: 17px; }
+.rightpin { height: 17px; }
+.bottompin { width: 15px; padding:0px; }
 """;
 
 def get_pins():
