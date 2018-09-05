@@ -1,7 +1,7 @@
 #!/bin/false
 # This file is part of Espruino, a JavaScript interpreter for Microcontrollers
 #
-# Copyright (C) 2013 Gordon Williams <gw@pur3.co.uk>
+# Copyright (C) 2018 Gordon Williams <gw@pur3.co.uk>
 #
 # This Source Code Form is subject to the terms of the Mozilla Public
 # License, v. 2.0. If a copy of the MPL was not distributed with this
@@ -22,7 +22,7 @@ import pinutils;
 info = {
  'name' : "iTracker RAK8211",
  #https://github.com/RAKWireless/ITRACKER-Arduino-SDK
- 'link' :  [ "http://docs.rakwireless.com/en/RAK8211/Hardware%20Design/RAK8211-G%20Datasheet%20V1.0.pdf" ],
+ 'link' :  [ "http://www.rakwireless.com/en/download/Cellular/RAK8211" ],
  'espruino_page_link' : 'RAK8211',
  'default_console' : "EV_SERIAL1",
  'default_console_tx' : "D29",
@@ -50,8 +50,8 @@ info = {
      'JSMODULESOURCES += libs/js/LIS2MDL.min.js',
      'JSMODULESOURCES += libs/js/LIS3DH.min.js',
      'JSMODULESOURCES += libs/js/OPT3001.min.js',
-#     'JSMODULESOURCES += libs/js/ATSMS.min.js',
-#     'JSMODULESOURCES += libs/js/QuectelM35.min.js',
+     'JSMODULESOURCES += libs/js/ATSMS.min.js',
+     'JSMODULESOURCES += libs/js/QuectelM35.min.js',
      'JSMODULESOURCES += iTracker:libs/js/rak/RAK8211.min.js'
    ]
  }
@@ -150,8 +150,7 @@ def get_pins():
   pinutils.findpin(pins, "PD19", True)["functions"]["LIS3DH_SDA"]=0;
   pinutils.findpin(pins, "PD25", True)["functions"]["LIS3DH_INT1"]=0;
   pinutils.findpin(pins, "PD27", True)["functions"]["LIS3DH_INT2"]=0;
-  pinutils.findpin(pins, "PD26", True)["functions"]["LIS3DH_RES"]=0;
-  pinutils.findpin(pins, "PD21", True)["functions"]["OPT_SDA"]=0;
+  pinutils.findpin(pins, "PD26", True)["functions"]["OPT_SDA"]=0;
   pinutils.findpin(pins, "PD23", True)["functions"]["OPT_SCL"]=0;
   pinutils.findpin(pins, "PD22", True)["functions"]["OPT_INT"]=0;
 

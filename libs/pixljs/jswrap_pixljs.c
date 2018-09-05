@@ -112,7 +112,7 @@ Pixl.show = function(menudata) {
     };
   }
   if (!menudata[""]) menudata[""]={};
-  g.setFontBitmap();
+  g.setFontBitmap();g.setFontAlign(-1,-1,0);
   var w = g.getWidth()-9;
   var h = g.getHeight();
   menudata[""].x=9;
@@ -133,7 +133,7 @@ Pixl.show = function(menudata) {
       0b00010000,
       0b00010000,
       0b00010000,
-      0b11111111,
+      0b11111110,
       0b01111100,
       0b00111000,
       0b00010000,
@@ -168,8 +168,8 @@ Pixl.show = function(menudata) {
    */
   JsVar *fn = jspEvaluate("(function(a){function c(a){return{width:8,height:a.length,bpp:1,buffer:(new Uint8Array(a)).buffer}}Pixl.btnWatches&&(Pixl.btnWatches.forEach(clearWatch),Pixl.btnWatches=void 0);"
       "g.clear();g.flip();"
-      "if(a){a['']||(a['']={});g.setFontBitmap();var d=g.getWidth()-9,e=g.getHeight();a[''].x=9;a[''].x2=d-2;a[''].preflip=function(){"
-      "g.drawImage(c([16,56,124,254,16,16,16,16]),0,4);g.drawImage(c([16,16,16,16,255,124,56,16]),0,e-12);g.drawImage(c([0,8,12,14,255,14,12,8]),d+1,e-12)};"
+      "if(a){a['']||(a['']={});g.setFontBitmap();g.setFontAlign(-1,-1,0);var d=g.getWidth()-9,e=g.getHeight();a[''].x=9;a[''].x2=d-2;a[''].preflip=function(){"
+      "g.drawImage(c([16,56,124,254,16,16,16,16]),0,4);g.drawImage(c([16,16,16,16,254,124,56,16]),0,e-12);g.drawImage(c([0,8,12,14,255,14,12,8]),d+1,e-12)};"
       "var b=require('graphical_menu').list(g,a);Pixl.btnWatches=[setWatch(function(){b.move(-1)},BTN1,{repeat:1}),setWatch(function(){b.move(1)},BTN4,{repeat:1}),"
       "setWatch(function(){b.select()},BTN3,{repeat:1})];return b}})",true);
   JsVar *result = jspExecuteFunction(fn,0,1,&menu);
@@ -290,6 +290,33 @@ void jswrap_pixljs_setContrast(JsVarFloat c) {
   lcd_wr(0x81);
   lcd_wr((int)(63*c));
   //lcd_wr(0x20|div); div = 0..7
+  jshPinSetValue(LCD_SPI_CS,1);
+}
+
+/*JSON{
+    "type" : "staticmethod",
+    "class" : "Pixl",
+    "name" : "setLCDPower",
+    "generate" : "jswrap_pixljs_setLCDPower",
+    "params" : [
+      ["isOn","bool","True if the LCD should be on, false if not"]
+    ]
+}
+This function can be used to turn Pixl.js's LCD off or on.
+
+* With the LCD off, Pixl.js draws around 0.1mA
+* With the LCD on, Pixl.js draws around 0.25mA
+*/
+void jswrap_pixljs_setLCDPower(bool isOn) {
+  jshPinSetValue(LCD_SPI_CS,0);
+  jshPinSetValue(LCD_SPI_DC,0);
+  if (isOn) {
+    lcd_wr(0xA4); // cancel pixel on
+    lcd_wr(0xAF); // display on
+  } else {
+    lcd_wr(0xAE); // display off
+    lcd_wr(0xA5); // all pixels on
+  }
   jshPinSetValue(LCD_SPI_CS,1);
 }
 
@@ -471,7 +498,8 @@ void jswrap_pixljs_init() {
   };
 
   // Create 'flip' fn
-  JsVar *fn = jsvNewNativeFunction((void (*)(void))lcd_flip, JSWAT_VOID|JSWAT_THIS_ARG|(JSWAT_BOOL << (JSWAT_BITS*1)));
+  JsVar *fn;
+  fn = jsvNewNativeFunction((void (*)(void))lcd_flip, JSWAT_VOID|JSWAT_THIS_ARG|(JSWAT_BOOL << (JSWAT_BITS*1)));
   jsvObjectSetChildAndUnLock(graphics,"flip",fn);
   // LCD init 2
   jshDelayMicroseconds(10000);
@@ -486,6 +514,7 @@ void jswrap_pixljs_init() {
        35,     // actual contrast (0..63)
        0x25,   // regulation resistor ratio (0..7)
        0x2F,   // control power circuits - last 3 bits = VB/VR/VF
+       0xF8, 1, // Set boost level to 5x - draws maybe 0.04mA more, but much better blacks
        0xA0,   // start at column 128
        0xAF    // disp on
   };
@@ -511,7 +540,7 @@ void jswrap_pixljs_init() {
   }
   graphicsDrawString(&gfx,28,39,JS_VERSION);
   // Write MAC address in bottom right
-  JsVar *addr = jswrap_nrf_bluetooth_getAddress();
+  JsVar *addr = jswrap_ble_getAddress();
   char buf[20];
   jsvGetString(addr, buf, sizeof(buf));
   jsvUnLock(addr);

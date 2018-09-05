@@ -26,14 +26,14 @@
  */
 
 #define MAX_GROUPS 9
-#define NO_RANGE  -1
+#define NO_RANGE  256
 
 typedef struct {
   JsVar *sourceStr;
   size_t startIndex;
   bool ignoreCase;
   bool rangeMatch;
-  char rangeFirstChar;
+  short rangeFirstChar;
   int groups;
   size_t groupStart[MAX_GROUPS];
   size_t groupEnd[MAX_GROUPS];
@@ -153,7 +153,7 @@ haveCode:
     cH = jsvStringCharToLower(cH);
   }
   if (info->rangeFirstChar != NO_RANGE) { // Character set range
-    char cL = info->rangeFirstChar;
+    char cL = (char)info->rangeFirstChar;
     if (info->ignoreCase) {
       cL = jsvStringCharToLower(cL);
     }
@@ -172,10 +172,13 @@ JsVar *matchhere(char *regexp, JsvStringIterator *txtIt, matchInfo info) {
     info.groupStart[info.groups] = jsvStringIteratorGetIndex(txtIt);
     info.groupEnd[info.groups] = info.groupStart[info.groups];
     if (info.groups<MAX_GROUPS) info.groups++;
+    if (!jspCheckStackPosition()) return 0;
     return matchhere(regexp+1, txtIt, info);
   }
   if (regexp[0] == ')') {
-    info.groupEnd[info.groups-1] = jsvStringIteratorGetIndex(txtIt);
+    if (info.groups>0)
+      info.groupEnd[info.groups-1] = jsvStringIteratorGetIndex(txtIt);
+    if (!jspCheckStackPosition()) return 0;
     return matchhere(regexp+1, txtIt, info);
   }
   int charLength;
@@ -219,6 +222,7 @@ JsVar *matchhere(char *regexp, JsvStringIterator *txtIt, matchInfo info) {
   //
   if (jsvStringIteratorHasChar(txtIt) && charMatched) {
     jsvStringIteratorNext(txtIt);
+    if (!jspCheckStackPosition()) return 0;
     return matchhere(regexp+charLength, txtIt, info);
   }
   return 0;

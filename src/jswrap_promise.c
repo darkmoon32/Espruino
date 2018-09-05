@@ -83,8 +83,8 @@ void _jswrap_promise_resolve_or_reject(JsVar *promise, JsVar *data, JsVar *fn) {
       JsVar *fnres = jsvNewNativeFunction((void (*)(void))_jswrap_promise_queueresolve, JSWAT_VOID|JSWAT_THIS_ARG|(JSWAT_JSVAR<<JSWAT_BITS));
       JsVar *fnrej = jsvNewNativeFunction((void (*)(void))_jswrap_promise_queuereject, JSWAT_VOID|JSWAT_THIS_ARG|(JSWAT_JSVAR<<JSWAT_BITS));
       if (fnres && fnrej) {
-        jsvObjectSetChild(fnres, JSPARSE_FUNCTION_THIS_NAME, chainedPromise);
-        jsvObjectSetChild(fnrej, JSPARSE_FUNCTION_THIS_NAME, chainedPromise);
+        jsvObjectSetChild(fnres, JSPARSE_FUNCTION_THIS_NAME, chainedPromise); // bind 'this'
+        jsvObjectSetChild(fnrej, JSPARSE_FUNCTION_THIS_NAME, chainedPromise); // bind 'this'
         _jswrap_promise_add(result, fnres, true);
         _jswrap_promise_add(result, fnrej, false);
       }
@@ -121,13 +121,13 @@ void _jswrap_promise_resolve_or_reject_chain(JsVar *promise, JsVar *data, bool r
       chainedPromise = n;
     }
   }
+  if (resolve)
+    jsvObjectSetChild(promise, JS_PROMISE_RESOLVED_NAME, data);
   if (fn) {
     _jswrap_promise_resolve_or_reject(promise, data, fn);
     jsvUnLock(fn);
   } else {
-    if (resolve)
-      jsvObjectSetChild(promise, JS_PROMISE_RESOLVED_NAME, data);
-    else
+    if (!resolve)
       jsExceptionHere(JSET_ERROR, "Unhandled promise rejection: %v", data);
   }
 }
@@ -138,7 +138,7 @@ void _jswrap_promise_resolve(JsVar *promise, JsVar *data) {
 void _jswrap_promise_queueresolve(JsVar *promise, JsVar *data) {
   JsVar *fn = jsvNewNativeFunction((void (*)(void))_jswrap_promise_resolve, JSWAT_VOID|JSWAT_THIS_ARG|(JSWAT_JSVAR<<JSWAT_BITS));
   if (!fn) return;
-  jsvObjectSetChild(fn, JSPARSE_FUNCTION_THIS_NAME, promise);
+  jsvObjectSetChild(fn, JSPARSE_FUNCTION_THIS_NAME, promise); // bind 'this'
   jsiQueueEvents(promise, fn, &data, 1);
   jsvUnLock(fn);
 }
@@ -149,7 +149,7 @@ void _jswrap_promise_reject(JsVar *promise, JsVar *data) {
 void _jswrap_promise_queuereject(JsVar *promise, JsVar *data) {
   JsVar *fn = jsvNewNativeFunction((void (*)(void))_jswrap_promise_reject, JSWAT_VOID|JSWAT_THIS_ARG|(JSWAT_JSVAR<<JSWAT_BITS));
   if (!fn) return;
-  jsvObjectSetChild(fn, JSPARSE_FUNCTION_THIS_NAME, promise);
+  jsvObjectSetChild(fn, JSPARSE_FUNCTION_THIS_NAME, promise); // bind 'this'
   jsiQueueEvents(promise, fn, &data, 1);
   jsvUnLock(fn);
 }
@@ -257,7 +257,7 @@ JsVar *jswrap_promise_all(JsVar *arr) {
   if (!promise) return 0;
   JsVar *reject = jsvNewNativeFunction((void (*)(void))jswrap_promise_all_reject, JSWAT_VOID|JSWAT_THIS_ARG|(JSWAT_JSVAR<<JSWAT_BITS));
   if (reject) {
-    jsvObjectSetChild(reject, JSPARSE_FUNCTION_THIS_NAME, promise);
+    jsvObjectSetChild(reject, JSPARSE_FUNCTION_THIS_NAME, promise); // bind 'this'
     JsVar *promiseResults = jsvNewEmptyArray();
     int promiseIndex = 0;
     int promisesComplete = 0;
@@ -268,15 +268,10 @@ JsVar *jswrap_promise_all(JsVar *arr) {
       if (_jswrap_promise_is_promise(p)) {
         JsVar *resolve = jsvNewNativeFunction((void (*)(void))jswrap_promise_all_resolve, JSWAT_VOID|JSWAT_THIS_ARG|(JSWAT_INT32<<JSWAT_BITS)|(JSWAT_JSVAR<<(JSWAT_BITS*2)));
         // bind the index variable
-        JsVar *paramName = jsvNewFromEmptyString();
-        if (paramName) {
-          jsvMakeFunctionParameter(paramName); // force this to be called a function parameter
-          JsVar *indexVar = jsvNewFromInteger(promiseIndex);
-          jsvSetValueOfName(paramName, indexVar);
-          jsvAddName(resolve, paramName);
-          jsvUnLock2(indexVar, paramName);
-        }
-        jsvObjectSetChild(resolve, JSPARSE_FUNCTION_THIS_NAME, promise);
+        JsVar *indexVar = jsvNewFromInteger(promiseIndex);
+        jsvAddFunctionParameter(resolve, 0, indexVar);
+        jsvUnLock(indexVar);
+        jsvObjectSetChild(resolve, JSPARSE_FUNCTION_THIS_NAME, promise); // bind 'this'
         jsvUnLock2(jswrap_promise_then(p, resolve, reject), resolve);
       } else {
         jsvSetArrayItem(promiseResults, promiseIndex, p);

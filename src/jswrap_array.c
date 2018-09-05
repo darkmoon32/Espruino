@@ -170,7 +170,7 @@ JsVarInt jswrap_array_push(JsVar *parent, JsVar *args) {
   "type" : "method",
   "class" : "Array",
   "name" : "pop",
-  "generate_full" : "jsvArrayPop(parent)",
+  "generate_full" : "jsvSkipNameAndUnLock(jsvArrayPop(parent))",
   "return" : ["JsVar","The value that is popped off"]
 }
 Remove and return the value on the end of this array.
@@ -576,7 +576,7 @@ JsVar *jswrap_array_shift(JsVar *parent) {
   // unpack element from the array
   JsVar *el = 0;
   if (jsvIsArray(arr))
-    el = jsvArrayPop(arr);
+    el = jsvSkipNameAndUnLock(jsvArrayPop(arr));
   jsvUnLock(arr);
   return el;
 }

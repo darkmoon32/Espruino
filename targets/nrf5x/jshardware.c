@@ -62,7 +62,8 @@ void app_error_fault_handler(uint32_t id, uint32_t pc, uint32_t info) {
 #include "softdevice_handler.h"
 #endif
 
-#define SYSCLK_FREQ 32768 // this really needs to be a bit higher :)
+#define SYSCLK_FREQ 1048576 // 1 << 20
+#define RTC_SHIFT 5 // to get 32768 up to SYSCLK_FREQ
 
 /*  S110_SoftDevice_Specification_2.0.pdf
 
@@ -106,6 +107,8 @@ static uint8_t uart0rxBuffer[2]; // 2 char buffer
 static uint8_t uart0txBuffer[1];
 bool uartIsSending = false;
 bool uartInitialised = false;
+
+void jshUSARTUnSetup(IOEventFlags device);
 
 const nrf_drv_twi_t *jshGetTWI(IOEventFlags device) {
   if (device == EV_I2C1) return &TWI1;
@@ -176,9 +179,13 @@ static NO_INLINE void jshPinSetFunction_int(JshPinFunction func, uint32_t pin) {
       break;
     }
 #endif
-  case JSH_USART1: if (fInfo==JSH_USART_RX) NRF_UART0->PSELRXD = pin;
-                   else NRF_UART0->PSELTXD = pin;
-                   // TODO: do we need to disable the UART driver if both pins are undefined?
+  case JSH_USART1: if (fInfo==JSH_USART_RX) {
+                     NRF_UART0->PSELRXD = pin;
+                     if (pin==0xFFFFFFFF) nrf_drv_uart_rx_disable(&UART0);
+                   } else NRF_UART0->PSELTXD = pin;
+                   // if both pins are disabled, shut down the UART
+                   if (NRF_UART0->PSELRXD==0xFFFFFFFF && NRF_UART0->PSELTXD==0xFFFFFFFF)
+                     jshUSARTUnSetup(EV_SERIAL1);
                    break;
 #if SPI_ENABLED
   case JSH_SPI1: if (fInfo==JSH_SPI_MISO) NRF_SPI0->PSELMISO = pin;
@@ -368,10 +375,10 @@ JsSysTime jshGetSystemTime() {
   // Detect RTC overflows
   uint32_t systemTime = NRF_RTC0->COUNTER;
   if ((lastSystemTime & 0x800000) && !(systemTime & 0x800000))
-    baseSystemTime += 0x1000000; // it's a 24 bit counter
+    baseSystemTime += (0x1000000 << RTC_SHIFT); // it's a 24 bit counter
   lastSystemTime = systemTime;
   // Use RTC0 (also used by BLE stack) - as app_timer starts/stops RTC1
-  return baseSystemTime + (JsSysTime)systemTime;
+  return baseSystemTime + (JsSysTime)(systemTime << RTC_SHIFT);
 }
 
 /// Set the system time (in ticks) - this should only be called rarely as it could mess up things like jsinteractive's timers!
@@ -977,6 +984,21 @@ static void uart0_event_handle(nrf_drv_uart_event_t * p_event, void* p_context) 
     }
 }
 
+void jshUSARTUnSetup(IOEventFlags device) {
+  if (device != EV_SERIAL1)
+    return;
+  if (!uartInitialised)
+    return;
+  uartInitialised = false;
+  jshTransmitClearDevice(device);
+  nrf_drv_uart_rx_disable(&UART0);
+  nrf_drv_uart_tx_abort(&UART0);
+
+  jshSetFlowControlEnabled(device, false, PIN_UNDEFINED);
+  nrf_drv_uart_uninit(&UART0);
+}
+
+
 /** Set up a UART, if pins are -1 they will be guessed */
 void jshUSARTSetup(IOEventFlags device, JshUSARTInfo *inf) {
   if (device != EV_SERIAL1)
@@ -1217,7 +1239,7 @@ JsVar *jshFlashGetFree() {
   JsVar *jsFreeFlash = jsvNewEmptyArray();
   if (!jsFreeFlash) return 0;
   /* Try and find pages after the end of firmware but before saved code */
-  extern int LINKER_ETEXT_VAR; // end of flash text (binary) section
+  extern uint32_t LINKER_ETEXT_VAR; // end of flash text (binary) section
   uint32_t firmwareEnd = (uint32_t)&LINKER_ETEXT_VAR;
   uint32_t pAddr, pSize;
   jshFlashGetPage(firmwareEnd, &pAddr, &pSize);

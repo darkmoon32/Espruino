@@ -180,6 +180,8 @@ bool jshGetDevicePath(IOEventFlags device, char *buf, size_t bufSize) {
   return success;
 }
 
+
+
 // ----------------------------------------------------------------------------
 // for non-blocking IO
 #ifdef __MINGW32__
@@ -251,8 +253,8 @@ void jshInputThread() {
       execInfo.execute = (execInfo.execute & ~EXEC_CTRL_C_WAIT) | EXEC_INTERRUPTED;
     if (execInfo.execute & EXEC_CTRL_C)
       execInfo.execute = (execInfo.execute & ~EXEC_CTRL_C) | EXEC_CTRL_C_WAIT;
-    // Read from the console
-    while (kbhit()) {
+    // Read from the console if we have space
+    while (kbhit() && (jshGetEventsUsed()<IOBUFFERMASK/2)) {
       int ch = getch();
       if (ch<0) break;
       jshPushIOCharEvent(EV_USBSERIAL, (char)ch);
@@ -299,7 +301,7 @@ void jshInputThread() {
       }
 #endif
 
-    usleep(shortSleep ? 1000 : 50000);
+    jshDelayMicroseconds(shortSleep ? 1000 : 50000);
   }
 }
 
@@ -360,7 +362,10 @@ void jshReset() {
 void jshKill() {
   int i;
 
+  // Request that the input thread finishes
   isInitialised = false;
+  // wait for thread to finish
+  pthread_join(inputThread, NULL);
 
   for (i=0;i<=EV_DEVICE_MAX;i++)
     if (ioDevices[i]) {
@@ -435,7 +440,10 @@ bool jshIsInInterrupt() {
 }
 
 void jshDelayMicroseconds(int microsec) {
-  usleep(microsec);
+  struct timeval tv;
+  tv.tv_sec  = microsec / 1000000;
+  tv.tv_usec = (suseconds_t) microsec % 1000000;
+  select( 0, NULL, NULL, NULL, &tv );
 }
 
 void jshPinSetState(Pin pin, JshPinState state) {
@@ -567,7 +575,7 @@ void jshPinPulse(Pin pin, bool value, JsVarFloat time) {
   if (jshIsPinValid(pin)) {
     jshPinSetState(pin, JSHPINSTATE_GPIO_OUT);
     jshPinSetValue(pin, value);
-    usleep(time*1000000);
+    jshDelayMicroseconds(time*1000000);
     jshPinSetValue(pin, !value);
   } else jsError("Invalid pin!");
 }
@@ -791,7 +799,7 @@ bool jshSleep(JsSysTime timeUntilWake) {
   if (usecs > 50000)
     usecs = 50000; // don't want to sleep too much (user input/HTTP/etc)
   if (usecs >= 1000)  
-    usleep(usecs); 
+    jshDelayMicroseconds(usecs);
   return true;
 }
 
